@@ -1,0 +1,51 @@
+name: ghcheck
+description: Audit a repository for token blast radius, workflow holes and leaked secrets, and fail the job when it is too risky.
+author: momomo12312hgfv
+
+branding:
+  icon: shield
+  color: purple
+
+inputs:
+  path:
+    description: Path to scan.
+    required: false
+    default: "."
+  fail-on:
+    description: Minimum severity that fails the job (low, medium, high, critical).
+    required: false
+    default: high
+  format:
+    description: Output format (markdown, json, sarif).
+    required: false
+    default: markdown
+  output-file:
+    description: Report path. Defaults to ghcheck-report.md or ghcheck-report.sarif.
+    required: false
+    default: ""
+  analyzer:
+    description: Comma-separated analyzers to run (token, workflow, secret). Empty runs all of them.
+    required: false
+    default: ""
+  exclude:
+    description: Comma-separated path fragments to skip.
+    required: false
+    default: ""
+  ignore:
+    description: Comma-separated rule ids to ignore everywhere.
+    required: false
+    default: ""
+
+outputs:
+  score:
+    description: Risk score from 0 to 100.
+  level:
+    description: Risk level (low, medium, high or critical).
+  report:
+    description: Path to the generated report file.
+  findings:
+    description: Number of findings.
+
+runs:
+  using: node24
+  main: action-dist/index.cjs

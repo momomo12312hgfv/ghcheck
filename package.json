@@ -1,0 +1,48 @@
+{
+  "name": "ghcheck",
+  "version": "0.1.0",
+  "description": "One scan, one report: token blast radius, workflow holes and leaked secrets in a single pass.",
+  "type": "module",
+  "bin": {
+    "ghcheck": "dist/ghcheck"
+  },
+  "files": [
+    "dist",
+    "action-dist",
+    "action.yml",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "dev": "bun run src/cli.ts",
+    "build": "bun run scripts/build.ts",
+    "build:all": "bun run scripts/build-all.ts",
+    "build:action": "bun run scripts/build-action.ts",
+    "docs": "bun run scripts/generate-docs.ts",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit",
+    "check": "bun run typecheck && bun test"
+  },
+  "keywords": [
+    "github",
+    "security",
+    "secret-scanning",
+    "workflow-audit",
+    "least-privilege",
+    "cli",
+    "sarif"
+  ],
+  "license": "MIT",
+  "engines": {
+    "bun": ">=1.2.0"
+  },
+  "dependencies": {
+    "commander": "^15.0.0",
+    "picocolors": "^1.1.1",
+    "yaml": "^2.8.1"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.4.3",
+    "typescript": "^7.0.2"
+  }
+}
