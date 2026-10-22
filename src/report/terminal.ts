@@ -66,6 +66,17 @@ export function renderTerminal(report: Report, color: boolean): string {
   const label = (value: string) => c.dim(value.padEnd(10));
 
   lines.push(`${c.bold("ghcheck")} ${pkg.version}`);
+  if (report.token) {
+    const token = report.token;
+    lines.push(`${label("identity")} ${token.identity ?? "(unavailable)"}`);
+    lines.push(`${label("token")} ${token.redacted} ${c.dim(`(${token.typeLabel})`)}`);
+    lines.push(`${label("scopes")} ${token.scopes.length > 0 ? token.scopes.join(", ") : "none"}`);
+    if (token.permissions.length > 0) {
+      lines.push(
+        `${label("permissions")} ${token.permissions.length} ${c.dim("(self-reported)")}`,
+      );
+    }
+  }
   lines.push(`${label("findings")} ${report.findings.length} ${c.dim(`(${countBySeverity(report)})`)}`);
   lines.push(
     `${label("files")} ${report.stats.filesScanned} scanned${report.stats.skippedFiles > 0 ? c.dim(`, ${report.stats.skippedFiles} skipped`) : ""}`,
@@ -92,7 +103,12 @@ export function renderTerminal(report: Report, color: boolean): string {
       lines.push(
         `  ${severityColor(c, finding.severity, "!")} ${c.bold(finding.title)} ${c.dim(`[${finding.id}]`)}`,
       );
-      lines.push(`    ${c.dim(locationOf(finding))}`);
+      const where = locationOf(finding);
+      if (where) {
+        lines.push(`    ${c.dim(where)}`);
+      } else if (finding.grantedBy?.length) {
+        lines.push(`    ${c.dim("granted by")} ${finding.grantedBy.join(", ")}`);
+      }
       lines.push(`    ${c.dim(truncate(finding.description, 110))}`);
       if (finding.evidence) {
         lines.push(`    ${c.dim("evidence")} ${c.dim(finding.evidence)}`);

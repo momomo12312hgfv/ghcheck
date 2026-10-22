@@ -6,8 +6,9 @@ import { redactSecrets } from "../core/redact";
 import { SEVERITIES, type AnalyzerId, type Severity } from "../core/types";
 import { runScan } from "../engine/run";
 import { renderReport } from "../report";
+import { resolveTokenInput, type TokenInputOptions } from "./token-input";
 
-interface ScanCliOptions {
+interface ScanCliOptions extends TokenInputOptions {
   format: string;
   failOn?: string;
   exclude?: string[];
@@ -53,6 +54,12 @@ export function registerScan(program: Command): void {
     .option("--exclude <pattern>", "skip paths containing this text (repeatable)", collect, [])
     .option("--ignore <rule-id>", "ignore this rule everywhere (repeatable)", collect, [])
     .option("--analyzer <ids>", "only run these analyzers: token, workflow, secret (repeatable)", collect, [])
+    .option("--token <token>", "also analyse this token (prefer --token-stdin or --gh-account)")
+    .option("--token-stdin", "read the token to analyse from stdin")
+    .option("--gh-account <name>", "also analyse the token of this gh CLI account")
+    .option("--scopes <scopes>", "classic scopes of the token, for an offline scan")
+    .option("--permissions <permissions>", "fine-grained permissions of the token")
+    .option("--login <login>", "login name to display")
     .option("--sarif-location <path>", "path recorded for the SARIF report location")
     .option("--no-color", "disable ANSI colors")
     .option("--quiet", "do not print the report to stdout")
@@ -63,12 +70,18 @@ export function registerScan(program: Command): void {
 
       const failOn = parseSeverity(options.failOn);
       const analyzers = parseAnalyzers(options.analyzer);
+      const input = await resolveTokenInput(options);
 
       const report = await runScan({
         root: path,
         analyzers,
         excludes: options.exclude ?? [],
         ignore: options.ignore ?? [],
+        token: input.token,
+        tokenType: input.tokenType,
+        scopes: input.scopes,
+        permissions: input.permissions,
+        login: input.login,
       });
 
       const color =

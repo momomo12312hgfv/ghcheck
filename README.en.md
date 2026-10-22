@@ -26,11 +26,11 @@ The three analyzers in ghcheck share **one Finding shape, one score, one report*
 
 | Analyzer | Looks at | Representative rules |
 |---|---|---|
-| `token` | Effective GITHUB_TOKEN permissions per job | `token.write-all-permissions`, `token.write-permission-contents` |
+| `token` | Effective GITHUB_TOKEN permissions per job, plus PAT scope and permission capabilities | `token.write-all-permissions`, `token.capability.repo.delete` |
 | `workflow` | Workflow structure and injection surface | `workflow.script-injection`, `workflow.privileged-checkout`, `workflow.dangerous-trigger` |
 | `secret` | Credentials committed to the repository | `secret.github-token`, `secret.aws-access-key-id`, `secret.private-key` |
 
-The full catalog is in [docs/rules.md](docs/rules.md) (29 rules, generated from the code).
+The full catalog is in [docs/rules.md](docs/rules.md) (78 rules, generated from the code).
 
 ## Install
 
@@ -74,6 +74,30 @@ ghcheck scan --exclude node_modules --exclude dist
 
 # List every rule
 ghcheck rules
+```
+
+### Token capability analysis
+
+The same repository has a second entry point, `ghcheck token`, which turns a token into a capability map:
+
+```bash
+# Read a token for an account from the gh CLI
+ghcheck token --gh-account momomo12312hgfv
+
+# Read from stdin, keeps it out of shell history
+cat token.txt | ghcheck token --token-stdin
+
+# Fully offline: describe the token yourself
+ghcheck token --scopes repo,workflow,delete_repo
+ghcheck token --permissions repo.contents=write,repo.workflows=write
+```
+
+Classic token scopes come from the GitHub API. **Fine-grained PAT permissions are not exposed by GitHub**, so they can only be self-reported through `--permissions`, and every report says so.
+
+Both entry points can be merged into one scan:
+
+```bash
+ghcheck scan ../my-repo --gh-account momomo12312hgfv
 ```
 
 ### Suppressing false positives

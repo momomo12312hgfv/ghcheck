@@ -27,6 +27,25 @@ export function renderMarkdown(report: Report): string {
   }
   lines.push("");
 
+  if (report.token) {
+    lines.push("## Token");
+    lines.push("");
+    lines.push("| Field | Value |");
+    lines.push("| --- | --- |");
+    lines.push(`| Identity | ${cell(report.token.identity ?? "—")} |`);
+    lines.push(`| Token | \`${cell(report.token.redacted)}\` (${cell(report.token.typeLabel)}) |`);
+    lines.push(
+      `| Scopes | ${report.token.scopes.length > 0 ? report.token.scopes.map((scope) => `\`${scope}\``).join(", ") : "none"} |`,
+    );
+    if (report.token.permissions.length > 0) {
+      lines.push(
+        `| Permissions (self-reported) | ${report.token.permissions
+          .map((permission) => `\`${permission.permission}=${permission.access}\``)
+          .join(", ")} |`,
+      );
+    }
+    lines.push("");
+  }
   lines.push("## Summary");
   lines.push("");
   lines.push("| Analyzer | Findings | Critical | High | Medium | Low |");

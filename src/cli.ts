@@ -3,6 +3,7 @@ import { Command } from "commander";
 import pkg from "../package.json";
 import { formatError, registerScan } from "./commands/scan";
 import { registerRules } from "./commands/rules";
+import { registerToken } from "./commands/token";
 
 const program = new Command();
 
@@ -14,6 +15,7 @@ program
   .showSuggestionAfterError();
 
 registerScan(program);
+registerToken(program);
 registerRules(program);
 
 if (process.argv.length <= 2) {

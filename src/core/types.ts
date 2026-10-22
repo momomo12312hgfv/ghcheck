@@ -80,12 +80,62 @@ export interface Report {
   summary: Record<AnalyzerId, AnalyzerSummary>;
   stats: ScanStats;
   warnings: string[];
+  /** Present when a token was analysed. */
+  token: TokenInfo | null;
 }
 
 export interface AnalyzerContext {
   /** Path relative to the scan root, always with forward slashes. */
   file: string;
   content: string;
+}
+
+export type TokenType =
+  | "classic-pat"
+  | "fine-grained-pat"
+  | "oauth"
+  | "github-app-user"
+  | "github-app-server"
+  | "github-app-refresh"
+  | "unknown";
+
+export type PermissionAccess = "read" | "write";
+
+export interface PermissionGrant {
+  permission: string;
+  access: PermissionAccess;
+}
+
+/**
+ * Repository level input, for checks that are about the token itself rather
+ * than about a file.
+ */
+export interface RepositoryContext {
+  token?: string;
+  tokenType?: TokenType;
+  /** Classic OAuth scopes, either read from the API or self-reported. */
+  scopes?: string[];
+  /** Fine-grained permissions, self-reported because the API hides them. */
+  permissions?: PermissionGrant[];
+  login?: string;
+}
+
+export interface TokenInfo {
+  type: TokenType;
+  typeLabel: string;
+  /** Already redacted. */
+  redacted: string;
+  identity: string | null;
+  scopes: string[];
+  permissions: PermissionGrant[];
+  /** False when the token's permissions could not be determined. */
+  scoreKnown: boolean;
+}
+
+export interface RepositoryResult {
+  findings: Finding[];
+  warnings: string[];
+  token?: TokenInfo;
 }
 
 export interface Analyzer {
@@ -95,6 +145,8 @@ export interface Analyzer {
   /** Rules this analyzer can emit, used by `ghcheck rules` and docs. */
   rules: RuleDefinition[];
   analyze(context: AnalyzerContext): Finding[] | Promise<Finding[]>;
+  /** Optional repository level check, run once per scan. */
+  analyzeRepository?(context: RepositoryContext): RepositoryResult | Promise<RepositoryResult>;
 }
 
 export interface RuleDefinition {

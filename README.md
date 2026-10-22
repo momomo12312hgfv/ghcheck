@@ -26,11 +26,11 @@ ghcheck 的三个分析器共用**同一个 Finding 结构、同一套评分、�
 
 | 分析器 | 查什么 | 代表规则 |
 |---|---|---|
-| `token` | 每个 job 的 GITHUB_TOKEN 实际权限 | `token.write-all-permissions`、`token.write-permission-contents` |
+| `token` | 每个 job 的 GITHUB_TOKEN 实际权限 + PAT 的 scope/权限能力 | `token.write-all-permissions`、`token.capability.repo.delete` |
 | `workflow` | 工作流结构与注入面 | `workflow.script-injection`、`workflow.privileged-checkout`、`workflow.dangerous-trigger` |
 | `secret` | 仓库里硬编码的凭据 | `secret.github-token`、`secret.aws-access-key-id`、`secret.private-key` |
 
-完整清单见 [docs/rules.md](docs/rules.md)（29 条规则，随代码生成）。
+完整清单见 [docs/rules.md](docs/rules.md)（78 条规则，随代码生成）。
 
 ## 安装
 
@@ -74,6 +74,30 @@ ghcheck scan --exclude node_modules --exclude dist
 
 # 查看全部规则
 ghcheck rules
+```
+
+### Token 能力分析
+
+同一个仓库里还有第二个入口 `ghcheck token`，它把一个 Token 变成能力清单：
+
+```bash
+# 从 gh CLI 读某个账号的 Token
+ghcheck token --gh-account momomo12312hgfv
+
+# 从 stdin 读，避免进入 shell 历史
+cat token.txt | ghcheck token --token-stdin
+
+# 完全离线：自己描述这个 Token
+ghcheck token --scopes repo,workflow,delete_repo
+ghcheck token --permissions repo.contents=write,repo.workflows=write
+```
+
+经典 Token 的 OAuth scope 由 GitHub API 返回；**细粒度 PAT 的权限 GitHub 不暴露**，只能通过 `--permissions` 自报，报告中会明确标注。
+
+两个入口也可以合并成一次扫描：
+
+```bash
+ghcheck scan ../my-repo --gh-account momomo12312hgfv
 ```
 
 ### 抑制误报

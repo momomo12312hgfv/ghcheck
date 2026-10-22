@@ -1,5 +1,16 @@
 import { lineOfOffset, mapEntries, nodeOffset, parseYamlDocument, scalarText } from "../../core/yaml";
-import type { Analyzer, AnalyzerContext, Finding, RuleDefinition, Severity } from "../../core/types";
+import type {
+  Analyzer,
+  AnalyzerContext,
+  Finding,
+  RepositoryContext,
+  RepositoryResult,
+  RuleDefinition,
+  Severity,
+} from "../../core/types";
+import { CAPABILITY_DEFINITIONS } from "./capabilities";
+import { capabilityFindingId } from "./capability-findings";
+import { scanTokenContext } from "./scan";
 
 interface PermissionCapability {
   title: string;
@@ -108,6 +119,19 @@ const RULES: RuleDefinition[] = [
     remediation: "Drop the permission, or split the job so that the write step runs separately.",
   },
 ];
+
+/**
+ * Every capability of the scope and permission matrices is a rule as well, so
+ * that `ghcheck rules` and the rule catalog document the whole token model
+ * and not just the CI side of it.
+ */
+const CAPABILITY_RULES: RuleDefinition[] = CAPABILITY_DEFINITIONS.map((capability) => ({
+  id: capabilityFindingId(capability.id),
+  title: capability.title,
+  severity: capability.severity,
+  description: capability.description,
+  remediation: "Drop the scope or permission that grants this capability.",
+}));
 
 function isWorkflowPath(file: string): boolean {
   const normalized = file.replace(/\\/g, "/");
@@ -252,7 +276,26 @@ export const tokenAnalyzer: Analyzer = {
   id: "token",
   name: "Token capability analyzer",
   description:
-    "Works out what the GITHUB_TOKEN of each job can do, and reports every write permission it is granted.",
-  rules: RULES,
+    "Works out what the GITHUB_TOKEN of each job can do, what a personal access token can do, and reports every write permission it is granted.",
+  rules: [...RULES, ...CAPABILITY_RULES],
   analyze: analyzeToken,
+  async analyzeRepository(context: RepositoryContext): Promise<RepositoryResult> {
+    if (!context.token && !context.scopes?.length && !context.permissions?.length) {
+      return { findings: [], warnings: [] };
+    }
+    const result = await scanTokenContext(context);
+    return {
+      findings: result.findings,
+      warnings: result.warnings,
+      token: {
+        type: result.tokenType,
+        typeLabel: result.tokenTypeLabel,
+        redacted: result.redacted,
+        identity: result.identity?.login ?? null,
+        scopes: result.scopes,
+        permissions: result.permissions,
+        scoreKnown: result.scoreKnown,
+      },
+    };
+  },
 };
