@@ -1,3 +1,4 @@
+import { classifyAgentFile } from "../../core/agent-files";
 import { buildLineOffsets, lineAt, lineText } from "../../core/lines";
 import { redactMatch, redactSecrets } from "../../core/redact";
 import type { Analyzer, AnalyzerContext, Finding, RuleDefinition } from "../../core/types";
@@ -28,7 +29,14 @@ export function analyzeSecretContent(context: AnalyzerContext): Finding[] {
   const findings: Finding[] = [];
   const claims: ClaimedRange[] = [];
 
+  // In an MCP configuration the agent analyzer reports a credential in a URL
+  // with the severity and the remediation that fit an agent endpoint. Two
+  // findings for one line would only make the report harder to read.
+  const deferUrlCredentials = classifyAgentFile(file) === "mcp-config";
+
   for (const rule of SECRET_RULES) {
+    if (deferUrlCredentials && rule.id === "secret.basic-auth-url") continue;
+
     const pattern = new RegExp(rule.pattern.source, rule.pattern.flags);
     let match: RegExpExecArray | null;
 

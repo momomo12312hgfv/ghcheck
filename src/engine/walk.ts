@@ -40,6 +40,18 @@ const EXCLUDED_EXTENSIONS = new Set([
 
 const EXCLUDED_FILENAMES = new Set(["bun.lockb", "package-lock.json", "yarn.lock", "pnpm-lock.yaml"]);
 
+/**
+ * Directories that are skipped as a whole, except for the files named here.
+ *
+ * An MCP configuration inside `.vscode` or `.cursor` says what the agent on a
+ * developer's machine is allowed to do, so it is worth reading even though
+ * the rest of the directory is noise.
+ */
+const EXCLUDED_DIRECTORY_ALLOWLIST: Record<string, readonly string[]> = {
+  ".vscode": ["mcp.json"],
+  ".cursor": ["mcp.json"],
+};
+
 const DEFAULT_MAX_FILE_SIZE = 2 * 1024 * 1024;
 
 export interface WalkOptions {
@@ -100,7 +112,7 @@ export async function collectFiles(options: WalkOptions): Promise<WalkResult> {
     }
   }
 
-  async function walk(directory: string): Promise<void> {
+  async function walk(directory: string, allowedFiles?: ReadonlySet<string>): Promise<void> {
     const entries = await readdir(directory, { withFileTypes: true });
 
     for (const entry of entries) {
@@ -113,7 +125,13 @@ export async function collectFiles(options: WalkOptions): Promise<WalkResult> {
       }
 
       if (entry.isDirectory()) {
-        if (EXCLUDED_DIRECTORIES.has(entry.name)) continue;
+        if (allowedFiles) continue;
+        if (EXCLUDED_DIRECTORIES.has(entry.name)) {
+          const allowed = EXCLUDED_DIRECTORY_ALLOWLIST[entry.name];
+          if (!allowed) continue;
+          await walk(absolute, new Set(allowed));
+          continue;
+        }
         if (isExcluded(relativePath, options.excludes)) continue;
         if (isIgnored(gitignoreRules, relativePath)) {
           skipped += 1;
@@ -124,6 +142,8 @@ export async function collectFiles(options: WalkOptions): Promise<WalkResult> {
       }
 
       if (!entry.isFile()) continue;
+
+      if (allowedFiles && !allowedFiles.has(entry.name)) continue;
 
       const extension = entry.name.includes(".")
         ? `.${entry.name.slice(entry.name.lastIndexOf(".") + 1).toLowerCase()}`

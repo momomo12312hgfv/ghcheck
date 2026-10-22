@@ -32,5 +32,6 @@ export function emptySummary(): Record<AnalyzerId, { total: number; bySeverity: 
     token: { total: 0, bySeverity: { ...bySeverity } },
     workflow: { total: 0, bySeverity: { ...bySeverity } },
     secret: { total: 0, bySeverity: { ...bySeverity } },
+    agent: { total: 0, bySeverity: { ...bySeverity } },
   };
 }

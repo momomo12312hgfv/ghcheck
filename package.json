@@ -1,7 +1,7 @@
 {
   "name": "ghcheck",
-  "version": "0.1.1",
-  "description": "One scan, one report: token blast radius, workflow holes and leaked secrets in a single pass.",
+  "version": "0.2.0",
+  "description": "One scan, one report: token blast radius, workflow holes, leaked secrets and agent configuration.",
   "type": "module",
   "bin": {
     "ghcheck": "dist/ghcheck"

@@ -8,6 +8,7 @@ const ANALYZER_LABELS: Record<AnalyzerId, string> = {
   token: "token",
   workflow: "workflow",
   secret: "secret",
+  agent: "agent",
 };
 
 function severityColor(colors: Colors, severity: Severity, text: string): string {
@@ -113,6 +114,9 @@ export function renderTerminal(report: Report, color: boolean): string {
       if (finding.evidence) {
         lines.push(`    ${c.dim("evidence")} ${c.dim(finding.evidence)}`);
       }
+      if (finding.confidence === "likely") {
+        lines.push(`    ${c.dim("confidence")} ${c.dim("likely")}`);
+      }
       lines.push(`    ${c.dim("fix")} ${c.dim(truncate(finding.remediation, 110))}`);
     }
 
@@ -122,9 +126,16 @@ export function renderTerminal(report: Report, color: boolean): string {
       `  ${c.dim("SEVERITY".padEnd(9))}${c.dim("RULE".padEnd(38))}${c.dim("LOCATION")}`,
     );
     for (const finding of report.findings) {
+      const rule = truncate(finding.id, finding.confidence === "likely" ? 35 : 37);
+      const marker = finding.confidence === "likely" ? " *" : "";
       lines.push(
-        `  ${severityColor(c, finding.severity, severityLabel(finding.severity).padEnd(9))}${truncate(finding.id, 37).padEnd(38)}${locationOf(finding)}`,
+        `  ${severityColor(c, finding.severity, severityLabel(finding.severity).padEnd(9))}${(rule + marker).padEnd(38)}${locationOf(finding)}`,
       );
+    }
+
+    if (report.findings.some((finding) => finding.confidence === "likely")) {
+      lines.push("");
+      lines.push(c.dim("  * the pattern is suspicious; the runtime behaviour is out of scope"));
     }
 
     lines.push("");

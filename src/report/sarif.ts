@@ -12,7 +12,7 @@ function sarifLevel(severity: Severity): SarifLevel {
   return "note";
 }
 
-function ruleMetadata(id: string): { title: string; description: string; remediation: string } {
+function ruleMetadata(id: string): { title: string; description: string; remediation: string; confidence?: string } {
   for (const analyzer of ANALYZER_LIST) {
     const rule = analyzer.rules.find((candidate) => candidate.id === id);
     if (rule) {
@@ -20,6 +20,7 @@ function ruleMetadata(id: string): { title: string; description: string; remedia
         title: rule.title,
         description: rule.description,
         remediation: rule.remediation,
+        confidence: rule.confidence,
       };
     }
   }
@@ -56,6 +57,7 @@ function buildRules(report: Report) {
       properties: {
         tags: ["security", "github", id.split(".")[0] ?? "ghcheck"],
         severity: worst,
+        ...(meta.confidence ? { confidence: meta.confidence } : {}),
       },
     };
   });
@@ -90,6 +92,7 @@ function buildResult(finding: Finding, index: number) {
     properties: {
       severity: finding.severity,
       analyzer: finding.analyzer,
+      ...(finding.confidence ? { confidence: finding.confidence } : {}),
       ...(finding.grantedBy?.length ? { grantedBy: finding.grantedBy } : {}),
     },
   };

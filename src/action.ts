@@ -60,7 +60,7 @@ export async function runAction(options: RunActionOptions = {}): Promise<void> {
   const analyzers: AnalyzerId[] = [];
   for (const id of splitList(input("analyzer"))) {
     if (!isAnalyzerId(id)) {
-      throw new Error(`Unknown analyzer "${id}". Expected one of: token, workflow, secret.`);
+      throw new Error(`Unknown analyzer "${id}". Expected one of: token, workflow, secret, agent.`);
     }
     analyzers.push(id);
   }

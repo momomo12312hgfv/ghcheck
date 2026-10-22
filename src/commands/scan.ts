@@ -17,6 +17,7 @@ interface ScanCliOptions extends TokenInputOptions {
   sarifLocation?: string;
   color: boolean;
   quiet?: boolean;
+  agentHome?: boolean;
 }
 
 function parseSeverity(raw: string | undefined): Severity | undefined {
@@ -36,7 +37,7 @@ function parseAnalyzers(raw: string[] | undefined): AnalyzerId[] | undefined {
       const id = part.trim();
       if (!id) continue;
       if (!isAnalyzerId(id)) {
-        throw new Error(`Unknown analyzer "${id}". Expected one of: token, workflow, secret.`);
+        throw new Error(`Unknown analyzer "${id}". Expected one of: token, workflow, secret, agent.`);
       }
       ids.push(id);
     }
@@ -53,7 +54,7 @@ export function registerScan(program: Command): void {
     .option("--fail-on <severity>", "exit with code 2 when a finding is at or above this severity")
     .option("--exclude <pattern>", "skip paths containing this text (repeatable)", collect, [])
     .option("--ignore <rule-id>", "ignore this rule everywhere (repeatable)", collect, [])
-    .option("--analyzer <ids>", "only run these analyzers: token, workflow, secret (repeatable)", collect, [])
+    .option("--analyzer <ids>", "only run these analyzers: token, workflow, secret, agent (repeatable)", collect, [])
     .option("--token <token>", "also analyse this token (prefer --token-stdin or --gh-account)")
     .option("--token-stdin", "read the token to analyse from stdin")
     .option("--gh-account <name>", "also analyse the token of this gh CLI account")
@@ -61,6 +62,7 @@ export function registerScan(program: Command): void {
     .option("--permissions <permissions>", "fine-grained permissions of the token")
     .option("--login <login>", "login name to display")
     .option("--sarif-location <path>", "path recorded for the SARIF report location")
+    .option("--agent-home", "also read the user level agent configuration outside the repository")
     .option("--no-color", "disable ANSI colors")
     .option("--quiet", "do not print the report to stdout")
     .action(async (path: string, options: ScanCliOptions) => {
@@ -82,6 +84,7 @@ export function registerScan(program: Command): void {
         scopes: input.scopes,
         permissions: input.permissions,
         login: input.login,
+        agentHome: options.agentHome === true,
       });
 
       const color =
@@ -112,6 +115,7 @@ Examples:
   $ ghcheck scan --fail-on high
   $ ghcheck scan --analyzer workflow --ignore workflow.unpinned-action
   $ ghcheck scan --exclude node_modules --exclude dist
+  $ ghcheck scan --agent-home
 `,
     );
 }

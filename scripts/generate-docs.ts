@@ -27,6 +27,10 @@ for (const analyzer of ANALYZER_LIST) {
       lines.push("");
       lines.push(`**${rule.title}**`);
       lines.push("");
+      if (rule.confidence) {
+        lines.push(`Confidence: ${rule.confidence}. The pattern is suspicious, the runtime behaviour is out of scope.`);
+        lines.push("");
+      }
       lines.push(rule.description);
       lines.push("");
       lines.push(`**Fix**: ${rule.remediation}`);
@@ -36,6 +40,12 @@ for (const analyzer of ANALYZER_LIST) {
 }
 
 lines.push("---");
+lines.push("");
+lines.push("## Confidence");
+lines.push("");
+lines.push(
+  "A rule that cannot be sure says so. `certain` means the pattern is unambiguous. `likely` means the pattern is suspicious but depends on runtime behaviour ghcheck does not observe, such as an agent instruction file that asks for a credential. Confidence never changes the score.",
+);
 lines.push("");
 lines.push("## Suppression");
 lines.push("");

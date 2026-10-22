@@ -9,7 +9,7 @@ const program = new Command();
 
 program
   .name("ghcheck")
-  .description("One scan, one report: token blast radius, workflow holes and leaked secrets.")
+  .description("One scan, one report: token blast radius, workflow holes, leaked secrets and agent configuration.")
   .version(pkg.version)
   .showHelpAfterError()
   .showSuggestionAfterError();

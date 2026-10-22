@@ -1,6 +1,6 @@
 # ghcheck
 
-> **One scan, one report**: CI token blast radius, workflow holes, and leaked secrets.
+> **One scan, one report**: CI token blast radius, workflow holes, leaked secrets, and what your AI agent is wired to.
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Release](https://img.shields.io/github/v/release/momomo12312hgfv/ghcheck)](https://github.com/momomo12312hgfv/ghcheck/releases)
@@ -14,13 +14,14 @@
 
 ## Why
 
-The tools that exist each own one slice, and none of them answers all three questions at once:
+The tools that exist each own one slice, and none of them answers all four questions at once:
 
 1. **What can my CI token do?** (what `contents: write` actually means)
 2. **What holes does my workflow have?** (script injection, privileged triggers, unpinned actions)
 3. **What did I leak?** (GitHub / AWS / private keys / database URLs)
+4. **What did I hand my agent?** (credentials in `.mcp.json`, unpinned packages, a whole home directory)
 
-The three analyzers in ghcheck share **one Finding shape, one score, one report**.
+The four analyzers in ghcheck share **one Finding shape, one score, one report**.
 
 ## What it checks
 
@@ -29,8 +30,9 @@ The three analyzers in ghcheck share **one Finding shape, one score, one report*
 | `token` | Effective GITHUB_TOKEN permissions per job, plus PAT scope and permission capabilities | `token.write-all-permissions`, `token.capability.repo.delete` |
 | `workflow` | Workflow structure and injection surface | `workflow.script-injection`, `workflow.privileged-checkout`, `workflow.dangerous-trigger` |
 | `secret` | Credentials committed to the repository | `secret.github-token`, `secret.aws-access-key-id`, `secret.private-key` |
+| `agent` | What the repository **declares** about its AI agents: MCP servers, the packages they pull, the instruction files that steer them | `agent.mcp-unpinned-runner`, `agent.mcp-embedded-credential`, `agent.instruction-prompt-injection` |
 
-The full catalog is in [docs/rules.md](docs/rules.md) (78 rules, generated from the code).
+The full catalog is in [docs/rules.md](docs/rules.md) (91 rules, generated from the code).
 
 ## Install
 
@@ -72,9 +74,33 @@ ghcheck scan --ignore workflow.unpinned-action
 # Skip paths
 ghcheck scan --exclude node_modules --exclude dist
 
+# Include the user level agent configuration (~/.claude.json and friends)
+ghcheck scan --agent-home
+
 # List every rule
 ghcheck rules
 ```
+
+### Agent configuration audit
+
+The `agent` analyzer reads what the repository **declares** about its AI agents. It never looks at runtime behaviour:
+
+```bash
+# Scan .mcp.json, AGENTS.md, CLAUDE.md and .vscode/mcp.json in the repository
+ghcheck scan --analyzer agent
+
+# Add the configuration on this machine (off by default)
+ghcheck scan --agent-home
+```
+
+It reports:
+
+- **unpinned packages** in `.mcp.json` (`npx -y some-server@latest`)
+- remote MCP endpoints with a **credential in the URL** or over **plain HTTP**
+- a filesystem server scoped to the **whole home directory**
+- **prompt injection** in instruction files (`ignore all previous instructions`), `curl … | sh`, **sending data out**, **asking for credentials**
+
+**The boundary is explicit**: ghcheck never starts an MCP server and never calls a tool, so it never claims whether a server demands authentication. A tool that declares an execution capability is not a vulnerability; those findings are marked `likely`, and **confidence never changes the score**.
 
 ### Token capability analysis
 
@@ -102,7 +128,7 @@ ghcheck scan ../my-repo --gh-account momomo12312hgfv
 
 ### Suppressing false positives
 
-One comment syntax works for all three analyzers:
+One comment syntax works for all four analyzers:
 
 ```yaml
 - run: echo "${{ github.event.pull_request.title }}"  # ghcheck: ignore workflow.script-injection
@@ -151,7 +177,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: momomo12312hgfv/ghcheck@v0.1.0
+      - uses: momomo12312hgfv/ghcheck@v0.2.0
         with:
           fail-on: high
           format: sarif
@@ -210,8 +236,9 @@ bun run docs          # regenerate docs/rules.md
 
 ## Roadmap
 
-- **v0.2** — online audits that need a GitHub token (known-vulnerable actions), configurable rule sets, the token scope-to-capability matrix folded in
-- **v0.3** — a published per-rule parity report against zizmor, actionlint and secretlint
+- **v0.2** — ✅ the agent analyzer: `.mcp.json`, `AGENTS.md`, `CLAUDE.md` and `.vscode/mcp.json` in the same report
+- **v0.3** — ghcheck as an MCP server, callable by an agent; npm distribution; official registry listing
+- **v0.4** — online audits that need a GitHub token (known-vulnerable actions), configurable rule sets
 
 ## License
 

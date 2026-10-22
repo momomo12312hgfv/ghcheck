@@ -7095,7 +7095,47 @@ var require_picocolors = __commonJS(function(exports2, module2) {
 
 // src/action.ts
 var import_node_fs = require("node:fs");
-var import_promises2 = require("node:fs/promises");
+var import_promises3 = require("node:fs/promises");
+
+// src/core/agent-files.ts
+var MCP_CONFIG_BASENAMES = new Set([
+  ".mcp.json",
+  "mcp.json",
+  "mcp_config.json",
+  "claude_desktop_config.json"
+]);
+var INSTRUCTION_BASENAMES = new Set([
+  "agents.md",
+  "claude.md",
+  "gemini.md",
+  "conventions.md",
+  ".cursorrules",
+  ".windsurfrules",
+  ".clinerules",
+  "copilot-instructions.md",
+  "opencode.md"
+]);
+var INSTRUCTION_PATH_MARKERS = [
+  "/.claude/skills/",
+  "/.claude/commands/",
+  "/.claude/agents/"
+];
+function classifyAgentFile(file) {
+  const normalized = file.replace(/\\/g, "/");
+  const base = normalized.slice(normalized.lastIndexOf("/") + 1).toLowerCase();
+  const markerPath = `/${normalized}`;
+  if (MCP_CONFIG_BASENAMES.has(base))
+    return "mcp-config";
+  if (INSTRUCTION_BASENAMES.has(base))
+    return "instruction";
+  if (base.endsWith(".skill.md"))
+    return "instruction";
+  if (markerPath.includes("/.github/copilot-instructions.md"))
+    return "instruction";
+  if (INSTRUCTION_PATH_MARKERS.some((marker) => markerPath.includes(marker)))
+    return "instruction";
+  return null;
+}
 
 // src/core/lines.ts
 function buildLineOffsets(content) {
@@ -7125,6 +7165,101 @@ function lineAt(offsets, index) {
 function lineText(content, line) {
   const lines = content.split(/\r?\n/);
   return lines[line - 1] ?? "";
+}
+
+// src/core/jsonc.ts
+function parseJsonc(source) {
+  try {
+    return { value: JSON.parse(stripTrailingCommas(stripComments(source))) };
+  } catch (error) {
+    return {
+      value: undefined,
+      error: error instanceof Error ? error.message : String(error)
+    };
+  }
+}
+function stripComments(source) {
+  let output = "";
+  let index = 0;
+  let inString = false;
+  let escaped = false;
+  while (index < source.length) {
+    const char = source[index] ?? "";
+    if (inString) {
+      output += char;
+      if (escaped) {
+        escaped = false;
+      } else if (char === "\\") {
+        escaped = true;
+      } else if (char === '"') {
+        inString = false;
+      }
+      index += 1;
+      continue;
+    }
+    if (char === '"') {
+      inString = true;
+      output += char;
+      index += 1;
+      continue;
+    }
+    if (char === "/" && source[index + 1] === "/") {
+      while (index < source.length && source[index] !== `
+`)
+        index += 1;
+      continue;
+    }
+    if (char === "/" && source[index + 1] === "*") {
+      index += 2;
+      while (index < source.length && !(source[index] === "*" && source[index + 1] === "/")) {
+        index += 1;
+      }
+      index += 2;
+      continue;
+    }
+    output += char;
+    index += 1;
+  }
+  return output;
+}
+function stripTrailingCommas(source) {
+  let output = "";
+  let index = 0;
+  let inString = false;
+  let escaped = false;
+  while (index < source.length) {
+    const char = source[index] ?? "";
+    if (inString) {
+      output += char;
+      if (escaped)
+        escaped = false;
+      else if (char === "\\")
+        escaped = true;
+      else if (char === '"')
+        inString = false;
+      index += 1;
+      continue;
+    }
+    if (char === '"') {
+      inString = true;
+      output += char;
+      index += 1;
+      continue;
+    }
+    if (char === ",") {
+      let lookahead = index + 1;
+      while (lookahead < source.length && /\s/.test(source[lookahead] ?? ""))
+        lookahead += 1;
+      const next = source[lookahead];
+      if (next === "}" || next === "]") {
+        index += 1;
+        continue;
+      }
+    }
+    output += char;
+    index += 1;
+  }
+  return output;
 }
 
 // src/core/redact.ts
@@ -7400,6 +7535,504 @@ var SECRET_RULES = [
   }
 ];
 
+// src/analyzers/agent/rules.ts
+var AGENT_RULES = [
+  {
+    id: "agent.mcp-invalid-json",
+    title: "Agent configuration is not valid JSON",
+    severity: "medium",
+    description: "The MCP configuration could not be parsed, so none of the agent checks could run against it. Editors accept comments and trailing commas, which is why this file may still work in the editor.",
+    remediation: "Fix the JSON syntax, or keep the file valid for every tool that reads it."
+  },
+  {
+    id: "agent.mcp-embedded-credential",
+    title: "MCP endpoint carries a credential",
+    severity: "critical",
+    description: "The MCP endpoint embeds a credential in the URL or in a header. The value is part of the configuration file, so it ends up in git history, in the agent transcript and in every log that prints the configuration.",
+    remediation: "Move the credential into an environment variable and reference it (`${TOKEN}`), and rotate the value that was committed."
+  },
+  {
+    id: "agent.mcp-secret-in-env",
+    title: "MCP server receives a secret as a literal value",
+    severity: "high",
+    description: "The server configuration passes a secret to the MCP server as a literal string. Every process that can read the configuration file can read the secret with it.",
+    remediation: "Reference the environment variable instead (`${TOKEN}`) and keep the value in the shell or the secret store."
+  },
+  {
+    id: "agent.mcp-unpinned-runner",
+    title: "MCP server runs an unpinned package",
+    severity: "high",
+    description: "The server is started with a package runner that resolves the package at install time. Whoever controls that package name, or the account that owns it, decides what runs on the machine next.",
+    remediation: "Pin the exact version (`pkg@1.2.3`) or the commit of the package you trust."
+  },
+  {
+    id: "agent.mcp-insecure-endpoint",
+    title: "MCP endpoint uses plain HTTP",
+    severity: "high",
+    description: "The remote MCP endpoint is reached over plain HTTP. Everything the agent sends and everything the server answers travels in clear text, including the credentials the agent hands over.",
+    remediation: "Use `https://` and terminate TLS at the endpoint."
+  },
+  {
+    id: "agent.mcp-broad-filesystem",
+    title: "MCP filesystem server is scoped to the whole home directory",
+    severity: "high",
+    confidence: "likely",
+    description: "The filesystem server is allowed to read the entire home directory, which normally holds SSH keys, tokens, shell history and every other project on the machine.",
+    remediation: "Scope the server to the one directory the agent actually needs."
+  },
+  {
+    id: "agent.mcp-permission-bypass",
+    title: "MCP server is started with a permission bypass",
+    severity: "high",
+    description: "The server is started with a flag that turns the permission prompts off. The agent then runs whatever the server asks for, with the permissions of the user who started it.",
+    remediation: "Drop the flag and let the agent ask before it acts."
+  },
+  {
+    id: "agent.instruction-unsafe-command",
+    title: "Agent instructions ask for an unsafe command",
+    severity: "high",
+    description: "The instruction file tells the agent to run a command that pipes a download into a shell, makes a file world writable, or deletes a home directory. Instructions like this run every time the agent reads the file.",
+    remediation: "Remove the command, or state the steps the agent should follow instead of a shell one-liner."
+  },
+  {
+    id: "agent.mcp-shell-command",
+    title: "MCP server is started through a shell",
+    severity: "medium",
+    confidence: "likely",
+    description: "The server is launched through a shell interpreter, so the real command is hidden inside a string argument and cannot be reviewed by reading the configuration.",
+    remediation: "Run the server binary directly instead of wrapping it in `sh -c`."
+  },
+  {
+    id: "agent.instruction-prompt-injection",
+    title: "Agent instructions contain an instruction override",
+    severity: "medium",
+    confidence: "likely",
+    description: "The instruction file tells the agent to ignore previous instructions or to turn off its safety rules. A file like that can turn any later request into an unguarded one.",
+    remediation: "Remove the override wording and keep the file to instructions about the project itself."
+  },
+  {
+    id: "agent.instruction-exfiltration",
+    title: "Agent instructions send data to an external endpoint",
+    severity: "medium",
+    confidence: "likely",
+    description: "The instruction file asks the agent to upload or post something to an external address. Combined with the access an agent usually has, that turns a routine task into a leak.",
+    remediation: "Say what should happen locally, and keep the outbound call explicit and reviewable."
+  },
+  {
+    id: "agent.instruction-credential-request",
+    title: "Agent instructions ask for credentials",
+    severity: "medium",
+    confidence: "likely",
+    description: "The instruction file asks the agent to read, print or show a credential. An agent that answers that request hands the value to the model, and from there to whoever is on the other end of the conversation.",
+    remediation: "Ask for the path or the name of the secret, never for the value."
+  }
+];
+
+// src/analyzers/agent/index.ts
+class Locator {
+  content;
+  offsets;
+  claimed = [];
+  constructor(content) {
+    this.content = content;
+    this.offsets = buildLineOffsets(content);
+  }
+  lineOf(needle) {
+    if (!needle)
+      return null;
+    const quoted = this.find(`"${needle}"`);
+    if (quoted !== null)
+      return quoted;
+    return this.find(needle);
+  }
+  find(needle) {
+    let from = 0;
+    while (from <= this.content.length) {
+      const index = this.content.indexOf(needle, from);
+      if (index === -1)
+        return null;
+      const end = index + needle.length;
+      if (!this.claimed.some((claim) => index < claim.end && end > claim.start)) {
+        this.claimed.push({ start: index, end });
+        return lineAt(this.offsets, index);
+      }
+      from = index + 1;
+    }
+    return null;
+  }
+}
+function asString(value) {
+  return typeof value === "string" ? value : undefined;
+}
+function asEntries(value) {
+  if (!value || typeof value !== "object")
+    return [];
+  return Object.entries(value).map(([key, entry]) => [key, asString(entry) ?? ""]).filter(([, entry]) => entry.length > 0);
+}
+function asArgs(value) {
+  if (!Array.isArray(value))
+    return [];
+  return value.map((entry) => typeof entry === "string" ? entry : "");
+}
+function normalizeServer(name, raw) {
+  return {
+    name,
+    command: asString(raw.command),
+    args: asArgs(raw.args),
+    env: asEntries(raw.env),
+    headers: asEntries(raw.headers),
+    url: asString(raw.url)
+  };
+}
+function extractServers(value) {
+  if (!value || typeof value !== "object")
+    return [];
+  const root = value;
+  const servers = [];
+  for (const section of ["mcpServers", "servers", "mcp"]) {
+    const entries = root[section];
+    if (!entries || typeof entries !== "object")
+      continue;
+    for (const [name, entry] of Object.entries(entries)) {
+      if (!entry || typeof entry !== "object")
+        continue;
+      servers.push(normalizeServer(name, entry));
+    }
+  }
+  return servers;
+}
+var RUNNER_COMMANDS = new Set(["npx", "bunx", "uvx", "pnpx"]);
+var SHELL_COMMANDS = new Set([
+  "sh",
+  "bash",
+  "zsh",
+  "dash",
+  "cmd",
+  "cmd.exe",
+  "powershell",
+  "pwsh"
+]);
+var BYPASS_FLAGS = [
+  "--dangerously-skip-permissions",
+  "--yolo",
+  "--allow-all",
+  "--no-sandbox",
+  "--unsafe-permissions",
+  "--full-auto"
+];
+var SECRET_NAME_PATTERN = /(TOKEN|SECRET|PASSWORD|PASSWD|API_?KEY|PRIVATE_?KEY|CREDENTIAL|ACCESS_?KEY|AUTH)/i;
+var URL_USERINFO_PATTERN = /^[a-z][a-z0-9+.-]*:\/\/([^/\s:@]+):([^/\s@]+)@/i;
+var URL_SECRET_QUERY_PATTERN = /[?&](token|access_token|api_key|apikey|key|secret|password|pwd)=([^&\s]+)/i;
+var BROAD_PATHS = new Set(["/", "~", "$HOME", "${HOME}", "%USERPROFILE%", "$USERPROFILE"]);
+function alreadyReportedAsSecret(value) {
+  for (const rule of SECRET_RULES) {
+    const pattern = new RegExp(rule.pattern.source, rule.pattern.flags.replace("g", ""));
+    const match = pattern.exec(value);
+    if (match && !rule.isFalsePositive?.(match[1] ?? match[0], value))
+      return true;
+  }
+  return false;
+}
+function isEnvironmentReference(value) {
+  return value.startsWith("${") || value.startsWith("$") || value.startsWith("env:") || value.startsWith("%") || value === "";
+}
+function findRule(id) {
+  const rule = AGENT_RULES.find((candidate) => candidate.id === id);
+  if (!rule)
+    throw new Error(`Unknown agent rule: ${id}`);
+  return rule;
+}
+function report(context, ruleId, options) {
+  const rule = findRule(ruleId);
+  const finding = {
+    id: rule.id,
+    analyzer: "agent",
+    severity: rule.severity,
+    title: rule.title,
+    description: options.description ?? rule.description,
+    location: { file: context.file, line: options.line ?? 1 },
+    remediation: rule.remediation
+  };
+  if (options.evidence)
+    finding.evidence = options.evidence;
+  if (rule.confidence)
+    finding.confidence = rule.confidence;
+  context.push(finding);
+}
+function runnerPackage(command, args) {
+  if (!command)
+    return null;
+  const base = command.toLowerCase();
+  if (RUNNER_COMMANDS.has(base)) {
+    const spec = args.find((arg) => !arg.startsWith("-"));
+    if (!spec)
+      return null;
+    const ecosystem = base === "uvx" ? "uv" : "npm";
+    return { spec, pinned: isPinnedSpec(spec, ecosystem) };
+  }
+  if (base === "pnpm" && args[0] === "dlx") {
+    const spec = args.slice(1).find((arg) => !arg.startsWith("-"));
+    if (!spec)
+      return null;
+    return { spec, pinned: isPinnedSpec(spec, "npm") };
+  }
+  if (base === "pipx" && args[0] === "run") {
+    const spec = args.slice(1).find((arg) => !arg.startsWith("-"));
+    if (!spec)
+      return null;
+    return { spec, pinned: isPinnedSpec(spec, "pip") };
+  }
+  if (base === "docker" && args[0] === "run") {
+    const spec = args.slice(1).find((arg) => !arg.startsWith("-"));
+    if (!spec)
+      return null;
+    return { spec, pinned: isPinnedImage(spec) };
+  }
+  return null;
+}
+function isPinnedSpec(spec, ecosystem) {
+  if (spec.startsWith(".") || spec.startsWith("/") || spec.startsWith("file:"))
+    return true;
+  if (spec.includes("git+") || spec.startsWith("http"))
+    return true;
+  if (ecosystem === "pip") {
+    if (spec.includes("=="))
+      return true;
+    return spec.includes("@");
+  }
+  if (ecosystem === "uv") {
+    if (spec.includes("=="))
+      return true;
+    return isPinnedSpec(spec, "npm");
+  }
+  const at = spec.lastIndexOf("@");
+  if (at <= 0)
+    return false;
+  const version = spec.slice(at + 1);
+  if (!version || version === "latest" || version === "next" || version === "master")
+    return false;
+  return /^\d/.test(version);
+}
+function isPinnedImage(spec) {
+  if (spec.includes("@sha256:"))
+    return true;
+  const withoutName = spec.split("/").pop() ?? spec;
+  const colon = withoutName.lastIndexOf(":");
+  if (colon === -1)
+    return false;
+  const tag = withoutName.slice(colon + 1);
+  return Boolean(tag) && tag !== "latest";
+}
+function redactUrl(url) {
+  return url.replace(URL_USERINFO_PATTERN, (_match, user) => `${user}:****...redacted@`);
+}
+function analyzeMcpConfig(context, sink) {
+  const parsed = parseJsonc(context.content);
+  if (parsed.error) {
+    report(sink, "agent.mcp-invalid-json", { line: null });
+    return;
+  }
+  for (const server of extractServers(parsed.value)) {
+    analyzeServer(server, context, sink);
+  }
+}
+function analyzeServer(server, context, sink) {
+  const label = `mcp server "${server.name}"`;
+  if (server.url) {
+    const url = server.url;
+    if (URL_USERINFO_PATTERN.test(url)) {
+      const match = url.match(URL_USERINFO_PATTERN);
+      const user = match?.[1] ?? "";
+      report(sink, "agent.mcp-embedded-credential", {
+        line: sink.locator("agent.mcp-embedded-credential").lineOf(url),
+        evidence: `${label} ${redactUrl(url)}`,
+        description: `${label} embeds a password in its endpoint URL. The value sits in the configuration file, in git history and in every log that prints it.`
+      });
+    } else if (URL_SECRET_QUERY_PATTERN.test(url)) {
+      report(sink, "agent.mcp-embedded-credential", {
+        line: sink.locator("agent.mcp-embedded-credential").lineOf(url),
+        evidence: `${label} ${redactUrl(url)}`,
+        description: `${label} passes a credential in the endpoint query string, where it lands in access logs and proxies.`
+      });
+    }
+    if (/^http:\/\//i.test(url)) {
+      report(sink, "agent.mcp-insecure-endpoint", {
+        line: sink.locator("agent.mcp-insecure-endpoint").lineOf(url),
+        evidence: `${label} ${url}`
+      });
+    }
+  }
+  for (const [header, value] of server.headers) {
+    if (!looksLikeCredentialValue(value))
+      continue;
+    report(sink, "agent.mcp-embedded-credential", {
+      line: sink.locator("agent.mcp-embedded-credential").lineOf(value),
+      evidence: `${label} header ${header}: ${redactMatch(value)}`,
+      description: `${label} sends a credential in the "${header}" header. The value is stored in plain text in the configuration file.`
+    });
+  }
+  for (const [name, value] of server.env) {
+    if (!SECRET_NAME_PATTERN.test(name))
+      continue;
+    if (isEnvironmentReference(value))
+      continue;
+    if (looksLikePlaceholder(value))
+      continue;
+    if (alreadyReportedAsSecret(value))
+      continue;
+    report(sink, "agent.mcp-secret-in-env", {
+      line: sink.locator("agent.mcp-secret-in-env").lineOf(value),
+      evidence: `${label} env ${name}: ${redactMatch(value)}`
+    });
+  }
+  const runner = runnerPackage(server.command, server.args);
+  if (runner && !runner.pinned) {
+    report(sink, "agent.mcp-unpinned-runner", {
+      line: sink.locator("agent.mcp-unpinned-runner").lineOf(runner.spec),
+      evidence: `${label} ${runner.spec}`,
+      description: `${label} resolves "${runner.spec}" at install time, so whoever controls that package decides what runs on the machine next.`
+    });
+  }
+  for (const flag of BYPASS_FLAGS) {
+    if (!server.args.includes(flag))
+      continue;
+    report(sink, "agent.mcp-permission-bypass", {
+      line: sink.locator("agent.mcp-permission-bypass").lineOf(flag),
+      evidence: `${label} ${flag}`
+    });
+  }
+  const command = server.command?.toLowerCase();
+  if (command && SHELL_COMMANDS.has(command)) {
+    report(sink, "agent.mcp-shell-command", {
+      line: sink.locator("agent.mcp-shell-command").lineOf(server.command ?? command),
+      evidence: `${label} ${server.command}`
+    });
+  }
+  const filesystemServer = runner && /filesystem|(^|[-_/])fs([-_@]|$)/i.test(runner.spec);
+  if (filesystemServer) {
+    for (const arg of server.args) {
+      if (!BROAD_PATHS.has(arg))
+        continue;
+      report(sink, "agent.mcp-broad-filesystem", {
+        line: sink.locator("agent.mcp-broad-filesystem").lineOf(arg),
+        evidence: `${label} ${arg}`
+      });
+    }
+  }
+}
+function looksLikeCredentialValue(value) {
+  if (value.length < 12)
+    return false;
+  if (/^(bearer|basic)\s+\S+/i.test(value))
+    return true;
+  return /(?:^|[^A-Za-z0-9])(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|sk-[A-Za-z0-9]{16,}|AKIA[A-Z0-9]{16})/.test(value);
+}
+var UNSAFE_COMMAND_PATTERNS = [
+  {
+    pattern: /(?:curl|wget)\s+[^\n|]*\|\s*(?:sudo\s+)?(?:ba|z|k)?sh\b/i,
+    description: "downloads a script from the network and pipes it straight into a shell"
+  },
+  {
+    pattern: /\bchmod\s+(?:-R\s+)?777\b/i,
+    description: "makes a file world writable"
+  },
+  {
+    pattern: /\brm\s+-[rRf]{1,2}\s+(?:\/|~|\$HOME)\b/i,
+    description: "deletes the home directory or the filesystem root"
+  },
+  {
+    pattern: /\b(?:iex|Invoke-Expression)\s*\(/i,
+    description: "runs a string as code"
+  }
+];
+var PROMPT_INJECTION_PATTERNS = [
+  /ignore\s+(?:all\s+)?(?:the\s+)?(?:previous|prior|above|earlier|preceding)\s+(?:instructions?|rules?|prompts?|messages?|directions?)/i,
+  /disregard\s+(?:all\s+)?(?:the\s+)?(?:previous|prior|above|earlier)\s+(?:instructions?|rules?|prompts?)/i,
+  /forget\s+(?:everything|all)\s+(?:you\s+)?(?:were\s+)?(?:told|above|before)/i,
+  /忽略(?:掉)?(?:所有)?(?:以上|之前|先前|上面|上述)(?:的)?(?:所有)?(?:指令|规则|提示|要求)/,
+  /(?:bypass|disable|turn\s+off)\s+(?:your\s+|the\s+)?(?:safety|guardrails?|security\s+(?:rules?|checks?))/i
+];
+var EXFILTRATION_VERBS = /(?:upload|post|send|exfiltrat\w*|publish|push)\s+(?:the\s+|your\s+|this\s+|it\s+|these\s+|those\s+)?(?:code|source|repo(?:sitory)?|data|file|files|token|secret|password|key|diff|patch)/i;
+var EXFILTRATION_VERBS_ZH = /(?:上传|发送|推送|上报|回传|提交)(?:代码|源码|仓库|数据|文件|令牌|密钥|密码|补丁)/;
+var CREDENTIAL_REQUEST_PATTERNS = [
+  /(?:print|show|output|reveal|display|dump|echo|cat|type)\s+[^\n]{0,40}(?:\.env\b|id_rsa|id_ed25519|credential|api[ _-]?key|access[ _-]?token|password|secret)/i,
+  /\benv\s*\|\s*grep\b/i,
+  /(?:读取|输出|打印|显示|回显|导出)[^\n]{0,20}(?:\.env\b|密钥|凭据|令牌|密码|私钥)/
+];
+function analyzeInstructionFile(context, sink) {
+  const lines = context.content.split(/\r?\n/);
+  for (let index = 0;index < lines.length; index += 1) {
+    const line = lines[index] ?? "";
+    const lineNumber = index + 1;
+    for (const entry of UNSAFE_COMMAND_PATTERNS) {
+      if (!entry.pattern.test(line))
+        continue;
+      report(sink, "agent.instruction-unsafe-command", {
+        line: lineNumber,
+        evidence: line.trim().slice(0, 120),
+        description: `The instruction file asks the agent to run a command that ${entry.description}.`
+      });
+    }
+    for (const pattern of PROMPT_INJECTION_PATTERNS) {
+      if (!pattern.test(line))
+        continue;
+      report(sink, "agent.instruction-prompt-injection", {
+        line: lineNumber,
+        evidence: line.trim().slice(0, 120)
+      });
+    }
+    const hasUrl = /https?:\/\//i.test(line);
+    if (hasUrl && (EXFILTRATION_VERBS.test(line) || EXFILTRATION_VERBS_ZH.test(line))) {
+      report(sink, "agent.instruction-exfiltration", {
+        line: lineNumber,
+        evidence: line.trim().slice(0, 120)
+      });
+    }
+    for (const pattern of CREDENTIAL_REQUEST_PATTERNS) {
+      if (!pattern.test(line))
+        continue;
+      report(sink, "agent.instruction-credential-request", {
+        line: lineNumber,
+        evidence: line.trim().slice(0, 120)
+      });
+    }
+  }
+}
+function analyzeAgentContent(context) {
+  const kind = classifyAgentFile(context.file);
+  if (!kind)
+    return [];
+  const findings = [];
+  const locators = new Map;
+  const sink = {
+    file: context.file,
+    content: context.content,
+    locator: (ruleId) => {
+      let locator = locators.get(ruleId);
+      if (!locator) {
+        locator = new Locator(context.content);
+        locators.set(ruleId, locator);
+      }
+      return locator;
+    },
+    push: (finding) => findings.push(finding)
+  };
+  if (kind === "mcp-config") {
+    analyzeMcpConfig(context, sink);
+  } else {
+    analyzeInstructionFile(context, sink);
+  }
+  return findings;
+}
+var agentAnalyzer = {
+  id: "agent",
+  name: "Agent",
+  description: "What the repository declares about its AI agents: MCP servers, the packages they pull and the instruction files that steer them.",
+  rules: AGENT_RULES,
+  acceptsExternalFiles: true,
+  analyze: analyzeAgentContent
+};
+
 // src/analyzers/secret/index.ts
 function toRuleDefinition(rule) {
   return {
@@ -7418,7 +8051,10 @@ function analyzeSecretContent(context) {
   const offsets = buildLineOffsets(content);
   const findings = [];
   const claims = [];
+  const deferUrlCredentials = classifyAgentFile(file) === "mcp-config";
   for (const rule of SECRET_RULES) {
+    if (deferUrlCredentials && rule.id === "secret.basic-auth-url")
+      continue;
     const pattern = new RegExp(rule.pattern.source, rule.pattern.flags);
     let match;
     while ((match = pattern.exec(content)) !== null) {
@@ -8084,8 +8720,8 @@ function capabilitiesToFindings(capabilities) {
 // package.json
 var package_default = {
   name: "ghcheck",
-  version: "0.1.1",
-  description: "One scan, one report: token blast radius, workflow holes and leaked secrets in a single pass.",
+  version: "0.2.0",
+  description: "One scan, one report: token blast radius, workflow holes, leaked secrets and agent configuration.",
   type: "module",
   bin: {
     ghcheck: "dist/ghcheck"
@@ -8938,7 +9574,12 @@ var workflowAnalyzer = {
 };
 
 // src/analyzers/index.ts
-var ANALYZER_LIST = [tokenAnalyzer, workflowAnalyzer, secretAnalyzer];
+var ANALYZER_LIST = [
+  tokenAnalyzer,
+  workflowAnalyzer,
+  secretAnalyzer,
+  agentAnalyzer
+];
 function getAnalyzers(ids) {
   if (!ids || ids.length === 0)
     return ANALYZER_LIST;
@@ -8975,7 +9616,8 @@ function emptySummary() {
   return {
     token: { total: 0, bySeverity: { ...bySeverity } },
     workflow: { total: 0, bySeverity: { ...bySeverity } },
-    secret: { total: 0, bySeverity: { ...bySeverity } }
+    secret: { total: 0, bySeverity: { ...bySeverity } },
+    agent: { total: 0, bySeverity: { ...bySeverity } }
   };
 }
 
@@ -9098,9 +9740,54 @@ function isSuppressed(suppression, ruleId, line) {
   return suppression.lineRules.get(line)?.has(ruleId) ?? false;
 }
 
-// src/engine/walk.ts
+// src/engine/home.ts
 var import_promises = require("node:fs/promises");
+var import_node_os = require("node:os");
 var import_node_path = require("node:path");
+function candidates() {
+  const home = import_node_os.homedir();
+  const list = [
+    { absolute: import_node_path.join(home, ".claude.json"), relativePath: "~/.claude.json" },
+    { absolute: import_node_path.join(home, ".cursor", "mcp.json"), relativePath: "~/.cursor/mcp.json" },
+    { absolute: import_node_path.join(home, ".codeium", "mcp.json"), relativePath: "~/.codeium/mcp.json" },
+    {
+      absolute: import_node_path.join(home, "Library", "Application Support", "Claude", "claude_desktop_config.json"),
+      relativePath: "~/Library/Application Support/Claude/claude_desktop_config.json"
+    },
+    {
+      absolute: import_node_path.join(home, ".config", "Claude", "claude_desktop_config.json"),
+      relativePath: "~/.config/Claude/claude_desktop_config.json"
+    }
+  ];
+  const appData = process.env.APPDATA;
+  if (appData) {
+    list.push({
+      absolute: import_node_path.join(appData, "Claude", "claude_desktop_config.json"),
+      relativePath: "%APPDATA%/Claude/claude_desktop_config.json"
+    });
+  }
+  return list;
+}
+var MAX_FILE_SIZE = 2 * 1024 * 1024;
+async function collectAgentHomeFiles() {
+  const files = [];
+  for (const candidate of candidates()) {
+    try {
+      const info = await import_promises.stat(candidate.absolute);
+      if (!info.isFile() || info.size > MAX_FILE_SIZE)
+        continue;
+      const content = await import_promises.readFile(candidate.absolute, "utf8");
+      files.push({ relativePath: candidate.relativePath, content, bytes: info.size });
+    } catch {
+      continue;
+    }
+  }
+  return files;
+}
+
+// src/engine/walk.ts
+var import_promises2 = require("node:fs/promises");
+var import_node_path2 = require("node:path");
 
 // src/engine/gitignore.ts
 function escapeRegex(value) {
@@ -9238,9 +9925,13 @@ var EXCLUDED_EXTENSIONS = new Set([
   ".a"
 ]);
 var EXCLUDED_FILENAMES = new Set(["bun.lockb", "package-lock.json", "yarn.lock", "pnpm-lock.yaml"]);
+var EXCLUDED_DIRECTORY_ALLOWLIST = {
+  ".vscode": ["mcp.json"],
+  ".cursor": ["mcp.json"]
+};
 var DEFAULT_MAX_FILE_SIZE = 2 * 1024 * 1024;
 function toPosix(value) {
-  return value.split(import_node_path.sep).join("/");
+  return value.split(import_node_path2.sep).join("/");
 }
 function isExcluded(relativePath, excludes) {
   const lowered = relativePath.toLowerCase();
@@ -9259,30 +9950,37 @@ async function collectFiles(options) {
   const files = [];
   const warnings = [];
   let skipped = 0;
-  const rootStat = await import_promises.stat(options.root);
+  const rootStat = await import_promises2.stat(options.root);
   if (!rootStat.isDirectory()) {
     throw new Error(`Scan path is not a directory: ${options.root}`);
   }
   let gitignoreRules = [];
   if (options.respectGitignore !== false) {
     try {
-      gitignoreRules = parseGitignore(await import_promises.readFile(import_node_path.join(options.root, ".gitignore"), "utf8"));
+      gitignoreRules = parseGitignore(await import_promises2.readFile(import_node_path2.join(options.root, ".gitignore"), "utf8"));
     } catch {
       gitignoreRules = [];
     }
   }
-  async function walk(directory) {
-    const entries = await import_promises.readdir(directory, { withFileTypes: true });
+  async function walk(directory, allowedFiles) {
+    const entries = await import_promises2.readdir(directory, { withFileTypes: true });
     for (const entry of entries) {
-      const absolute = import_node_path.join(directory, entry.name);
-      const relativePath = toPosix(import_node_path.relative(options.root, absolute));
+      const absolute = import_node_path2.join(directory, entry.name);
+      const relativePath = toPosix(import_node_path2.relative(options.root, absolute));
       if (entry.isSymbolicLink()) {
         skipped += 1;
         continue;
       }
       if (entry.isDirectory()) {
-        if (EXCLUDED_DIRECTORIES.has(entry.name))
+        if (allowedFiles)
           continue;
+        if (EXCLUDED_DIRECTORIES.has(entry.name)) {
+          const allowed = EXCLUDED_DIRECTORY_ALLOWLIST[entry.name];
+          if (!allowed)
+            continue;
+          await walk(absolute, new Set(allowed));
+          continue;
+        }
         if (isExcluded(relativePath, options.excludes))
           continue;
         if (isIgnored(gitignoreRules, relativePath)) {
@@ -9293,6 +9991,8 @@ async function collectFiles(options) {
         continue;
       }
       if (!entry.isFile())
+        continue;
+      if (allowedFiles && !allowedFiles.has(entry.name))
         continue;
       const extension = entry.name.includes(".") ? `.${entry.name.slice(entry.name.lastIndexOf(".") + 1).toLowerCase()}` : "";
       if (EXCLUDED_EXTENSIONS.has(extension) || EXCLUDED_FILENAMES.has(entry.name)) {
@@ -9307,12 +10007,12 @@ async function collectFiles(options) {
         skipped += 1;
         continue;
       }
-      const fileStat = await import_promises.stat(absolute);
+      const fileStat = await import_promises2.stat(absolute);
       if (fileStat.size > maxFileSize) {
         skipped += 1;
         continue;
       }
-      const buffer = await import_promises.readFile(absolute);
+      const buffer = await import_promises2.readFile(absolute);
       if (looksBinary(buffer)) {
         skipped += 1;
         continue;
@@ -9344,6 +10044,7 @@ async function runScan(options) {
     maxFileSize: options.maxFileSize
   });
   warnings.push(...walk.warnings);
+  const externalFiles = options.agentHome ? await collectAgentHomeFiles() : [];
   const findings = [];
   const seen = new Set;
   let bytesScanned = 0;
@@ -9374,26 +10075,39 @@ async function runScan(options) {
       });
     }
   }
+  function collect(produced, suppression) {
+    for (const finding of produced) {
+      if (globallyIgnored.has(finding.id))
+        continue;
+      if (isSuppressed(suppression, finding.id, finding.location?.line))
+        continue;
+      const enriched = {
+        ...finding,
+        evidence: finding.evidence ? redactSecrets(finding.evidence) : undefined
+      };
+      const key = findingKey(enriched);
+      if (seen.has(key))
+        continue;
+      seen.add(key);
+      findings.push(enriched);
+    }
+  }
   for (const file of walk.files) {
     bytesScanned += file.bytes;
     const suppression = collectSuppressions(file.content);
     for (const analyzer of analyzers) {
       const produced = await analyzer.analyze({ file: file.relativePath, content: file.content });
-      for (const finding of produced) {
-        if (globallyIgnored.has(finding.id))
-          continue;
-        if (isSuppressed(suppression, finding.id, finding.location?.line))
-          continue;
-        const enriched = {
-          ...finding,
-          evidence: finding.evidence ? redactSecrets(finding.evidence) : undefined
-        };
-        const key = findingKey(enriched);
-        if (seen.has(key))
-          continue;
-        seen.add(key);
-        findings.push(enriched);
-      }
+      collect(produced, suppression);
+    }
+  }
+  for (const file of externalFiles) {
+    bytesScanned += file.bytes;
+    const suppression = collectSuppressions(file.content);
+    for (const analyzer of analyzers) {
+      if (!analyzer.acceptsExternalFiles)
+        continue;
+      const produced = await analyzer.analyze({ file: file.relativePath, content: file.content });
+      collect(produced, suppression);
     }
   }
   findings.sort((a, b) => (a.location?.file ?? "").localeCompare(b.location?.file ?? "") || (a.location?.line ?? 0) - (b.location?.line ?? 0) || a.id.localeCompare(b.id));
@@ -9411,7 +10125,7 @@ async function runScan(options) {
     score: evaluateFindings(findings),
     summary,
     stats: {
-      filesScanned: walk.files.length,
+      filesScanned: walk.files.length + externalFiles.length,
       bytesScanned,
       durationMs: Date.now() - startedAt,
       skippedFiles: walk.skipped
@@ -9483,6 +10197,8 @@ function renderMarkdown(report) {
       lines.push("");
       lines.push(`- **Rule**: \`${finding.id}\``);
       lines.push(`- **Severity**: ${finding.severity}`);
+      if (finding.confidence)
+        lines.push(`- **Confidence**: ${finding.confidence}`);
       lines.push(`- **Location**: ${location}`);
       if (finding.evidence)
         lines.push(`- **Evidence**: \`${cell(finding.evidence)}\``);
@@ -9533,7 +10249,8 @@ function ruleMetadata(id) {
       return {
         title: rule.title,
         description: rule.description,
-        remediation: rule.remediation
+        remediation: rule.remediation,
+        confidence: rule.confidence
       };
     }
   }
@@ -9557,7 +10274,8 @@ function buildRules(report) {
       helpUri: DOCS_URL,
       properties: {
         tags: ["security", "github", id.split(".")[0] ?? "ghcheck"],
-        severity: worst
+        severity: worst,
+        ...meta.confidence ? { confidence: meta.confidence } : {}
       }
     };
   });
@@ -9592,6 +10310,7 @@ function buildResult(finding, index) {
     properties: {
       severity: finding.severity,
       analyzer: finding.analyzer,
+      ...finding.confidence ? { confidence: finding.confidence } : {},
       ...finding.grantedBy?.length ? { grantedBy: finding.grantedBy } : {}
     }
   };
@@ -9641,7 +10360,8 @@ var import_picocolors = __toESM(require_picocolors(), 1);
 var ANALYZER_LABELS = {
   token: "token",
   workflow: "workflow",
-  secret: "secret"
+  secret: "secret",
+  agent: "agent"
 };
 function severityColor(colors, severity, text) {
   switch (severity) {
@@ -9734,13 +10454,22 @@ function renderTerminal(report, color) {
       if (finding.evidence) {
         lines.push(`    ${c.dim("evidence")} ${c.dim(finding.evidence)}`);
       }
+      if (finding.confidence === "likely") {
+        lines.push(`    ${c.dim("confidence")} ${c.dim("likely")}`);
+      }
       lines.push(`    ${c.dim("fix")} ${c.dim(truncate(finding.remediation, 110))}`);
     }
     lines.push("");
     lines.push(c.bold("Findings"));
     lines.push(`  ${c.dim("SEVERITY".padEnd(9))}${c.dim("RULE".padEnd(38))}${c.dim("LOCATION")}`);
     for (const finding of report.findings) {
-      lines.push(`  ${severityColor(c, finding.severity, severityLabel(finding.severity).padEnd(9))}${truncate(finding.id, 37).padEnd(38)}${locationOf(finding)}`);
+      const rule = truncate(finding.id, finding.confidence === "likely" ? 35 : 37);
+      const marker = finding.confidence === "likely" ? " *" : "";
+      lines.push(`  ${severityColor(c, finding.severity, severityLabel(finding.severity).padEnd(9))}${(rule + marker).padEnd(38)}${locationOf(finding)}`);
+    }
+    if (report.findings.some((finding) => finding.confidence === "likely")) {
+      lines.push("");
+      lines.push(c.dim("  * the pattern is suspicious; the runtime behaviour is out of scope"));
     }
     lines.push("");
     lines.push(c.bold("By analyzer"));
@@ -9819,7 +10548,7 @@ async function appendSummary(markdown) {
   const summaryFile = process.env.GITHUB_STEP_SUMMARY;
   if (!summaryFile)
     return;
-  await import_promises2.appendFile(summaryFile, `${markdown}
+  await import_promises3.appendFile(summaryFile, `${markdown}
 `, "utf8");
 }
 async function runAction(options = {}) {
@@ -9830,7 +10559,7 @@ async function runAction(options = {}) {
   const analyzers = [];
   for (const id of splitList(input("analyzer"))) {
     if (!isAnalyzerId(id)) {
-      throw new Error(`Unknown analyzer "${id}". Expected one of: token, workflow, secret.`);
+      throw new Error(`Unknown analyzer "${id}". Expected one of: token, workflow, secret, agent.`);
     }
     analyzers.push(id);
   }
@@ -9845,13 +10574,13 @@ async function runAction(options = {}) {
     let output;
     if (format === "sarif") {
       const markdownPath = /\.sarif$/i.test(outputFile) ? outputFile.replace(/\.sarif$/i, ".md") : `${outputFile}.md`;
-      await import_promises2.writeFile(markdownPath, `${markdown}
+      await import_promises3.writeFile(markdownPath, `${markdown}
 `, "utf8");
       output = renderReport(report, "sarif", false, { sarifLocation: markdownPath });
     } else {
       output = renderReport(report, format, false);
     }
-    await import_promises2.writeFile(outputFile, `${output}
+    await import_promises3.writeFile(outputFile, `${output}
 `, "utf8");
     await appendSummary(markdown);
     if (!options.silent) {

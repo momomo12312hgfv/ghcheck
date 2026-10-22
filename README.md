@@ -1,6 +1,6 @@
 # ghcheck
 
-> **一次扫描，一份报告**：CI Token 权限、工作流漏洞、仓库里泄露的密钥。
+> **一次扫描，一份报告**：CI Token 权限、工作流漏洞、仓库里泄露的密钥、AI Agent 的配置。
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Release](https://img.shields.io/github/v/release/momomo12312hgfv/ghcheck)](https://github.com/momomo12312hgfv/ghcheck/releases)
@@ -14,13 +14,14 @@
 
 ## 为什么
 
-现成的工具各管一段，没有任何一份报告同时回答三个问题：
+现成的工具各管一段，没有任何一份报告同时回答四个问题：
 
 1. **我的 CI Token 能干什么？**（`contents: write` 意味着什么）
 2. **我的工作流有哪些洞？**（脚本注入、特权触发器、未固定 action）
 3. **仓库里漏了什么？**（GitHub / AWS / 私钥 / 数据库口令）
+4. **我的 Agent 拿到了什么权限？**（`.mcp.json` 里的凭据、未固定的包、通配整个家目录）
 
-ghcheck 的三个分析器共用**同一个 Finding 结构、同一套评分、同一份报告**。
+ghcheck 的四个分析器共用**同一个 Finding 结构、同一套评分、同一份报告**。
 
 ## 它做什么
 
@@ -29,8 +30,9 @@ ghcheck 的三个分析器共用**同一个 Finding 结构、同一套评分、�
 | `token` | 每个 job 的 GITHUB_TOKEN 实际权限 + PAT 的 scope/权限能力 | `token.write-all-permissions`、`token.capability.repo.delete` |
 | `workflow` | 工作流结构与注入面 | `workflow.script-injection`、`workflow.privileged-checkout`、`workflow.dangerous-trigger` |
 | `secret` | 仓库里硬编码的凭据 | `secret.github-token`、`secret.aws-access-key-id`、`secret.private-key` |
+| `agent` | 仓库对 AI Agent 的**声明**：MCP 服务器、它拉取的包、指挥它的指令文件 | `agent.mcp-unpinned-runner`、`agent.mcp-embedded-credential`、`agent.instruction-prompt-injection` |
 
-完整清单见 [docs/rules.md](docs/rules.md)（78 条规则，随代码生成）。
+完整清单见 [docs/rules.md](docs/rules.md)（91 条规则，随代码生成）。
 
 ## 安装
 
@@ -72,9 +74,33 @@ ghcheck scan --ignore workflow.unpinned-action
 # 跳过某些路径
 ghcheck scan --exclude node_modules --exclude dist
 
+# 连同用户级 Agent 配置一起看（~/.claude.json 等）
+ghcheck scan --agent-home
+
 # 查看全部规则
 ghcheck rules
 ```
+
+### Agent 配置审计
+
+`agent` 分析器读的是仓库对 AI Agent 的**声明**，不看运行时行为：
+
+```bash
+# 扫当前仓库里的 .mcp.json / AGENTS.md / CLAUDE.md / .vscode/mcp.json
+ghcheck scan --analyzer agent
+
+# 连同本机的 Agent 配置一起扫（默认关闭）
+ghcheck scan --agent-home
+```
+
+它会报告：
+
+- `.mcp.json` 里 **未固定版本**的包（`npx -y some-server@latest`）
+- 端点 URL 里**内嵌凭据**、**明文 HTTP** 的远程 MCP
+- 被授权到**整个家目录**的 filesystem server
+- 指令文件里的 **prompt injection**（`忽略以上所有指令`）、`curl … | sh`、**外传数据**、**索要凭据**
+
+**边界写清楚**：ghcheck **不会**启动 MCP 服务器、**不会**调用任何工具，因此也**不会**判断某个服务器是否要求鉴权。工具描述里声明了执行能力 ≠ 存在漏洞；这类结论标记为 `likely`，且**不影响评分**。
 
 ### Token 能力分析
 
@@ -102,7 +128,7 @@ ghcheck scan ../my-repo --gh-account momomo12312hgfv
 
 ### 抑制误报
 
-三个分析器共用一套注释语法：
+四个分析器共用一套注释语法：
 
 ```yaml
 - run: echo "${{ github.event.pull_request.title }}"  # ghcheck: ignore workflow.script-injection
@@ -151,7 +177,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: momomo12312hgfv/ghcheck@v0.1.0
+      - uses: momomo12312hgfv/ghcheck@v0.2.0
         with:
           fail-on: high
           format: sarif
@@ -209,8 +235,9 @@ bun run docs          # 重新生成 docs/rules.md
 
 ## 路线图
 
-- **v0.2** —— 需要 GitHub Token 的在线审计（已知漏洞 action）、可配置规则集、Token scope→能力矩阵并入
-- **v0.3** —— 与 zizmor / actionlint / secretlint 的逐条 parity 报告
+- **v0.2** —— ✅ Agent 分析器：`.mcp.json`、`AGENTS.md`、`CLAUDE.md`、`.vscode/mcp.json` 进同一份报告
+- **v0.3** —— ghcheck 作为 MCP Server 被 Agent 直接调用；npm 分发；官方 Registry 上架
+- **v0.4** —— 需要 GitHub Token 的在线审计（已知漏洞 action）、可配置规则集
 
 ## 许可
 

@@ -11,9 +11,20 @@ export const SEVERITIES = ["low", "medium", "high", "critical"] as const;
 
 export type Severity = (typeof SEVERITIES)[number];
 
-export const ANALYZERS = ["token", "workflow", "secret"] as const;
+export const ANALYZERS = ["token", "workflow", "secret", "agent"] as const;
 
 export type AnalyzerId = (typeof ANALYZERS)[number];
+
+/**
+ * How sure the analyzer is that a finding is a real problem.
+ *
+ * `certain` means the pattern is unambiguous: the credential is there, the
+ * trigger is privileged, the version is unpinned. `likely` means the pattern
+ * is suspicious but depends on runtime behaviour ghcheck cannot observe, for
+ * example an agent instruction file that asks for a credential. Confidence
+ * never changes the score, only how a reader should treat the finding.
+ */
+export type Confidence = "certain" | "likely";
 
 export interface Location {
   /** Path relative to the scan root, always with forward slashes. */
@@ -34,6 +45,8 @@ export interface Finding {
   evidence?: string;
   /** Token analyzer only: which scope or permission produced this. */
   grantedBy?: string[];
+  /** Present when the analyzer could not be sure. Absent means `certain`. */
+  confidence?: Confidence;
   remediation: string;
 }
 
@@ -147,6 +160,12 @@ export interface Analyzer {
   analyze(context: AnalyzerContext): Finding[] | Promise<Finding[]>;
   /** Optional repository level check, run once per scan. */
   analyzeRepository?(context: RepositoryContext): RepositoryResult | Promise<RepositoryResult>;
+  /**
+   * True when the analyzer also wants files that live outside the scan root,
+   * such as a user level agent configuration. The engine only hands those
+   * files to analyzers that ask for them.
+   */
+  acceptsExternalFiles?: boolean;
 }
 
 export interface RuleDefinition {
@@ -155,4 +174,6 @@ export interface RuleDefinition {
   severity: Severity;
   description: string;
   remediation: string;
+  /** Present when the rule cannot be sure. Absent means `certain`. */
+  confidence?: Confidence;
 }

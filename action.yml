@@ -1,5 +1,5 @@
 name: ghcheck
-description: Audit a repository for token blast radius, workflow holes and leaked secrets, and fail the job when it is too risky.
+description: Audit a repository for token blast radius, workflow holes, leaked secrets and agent configuration, and fail the job when it is too risky.
 author: momomo12312hgfv
 
 branding:
@@ -24,7 +24,7 @@ inputs:
     required: false
     default: ""
   analyzer:
-    description: Comma-separated analyzers to run (token, workflow, secret). Empty runs all of them.
+    description: Comma-separated analyzers to run (token, workflow, secret, agent). Empty runs all of them.
     required: false
     default: ""
   exclude:

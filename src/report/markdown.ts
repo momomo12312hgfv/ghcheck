@@ -82,6 +82,7 @@ export function renderMarkdown(report: Report): string {
       lines.push("");
       lines.push(`- **Rule**: \`${finding.id}\``);
       lines.push(`- **Severity**: ${finding.severity}`);
+      if (finding.confidence) lines.push(`- **Confidence**: ${finding.confidence}`);
       lines.push(`- **Location**: ${location}`);
       if (finding.evidence) lines.push(`- **Evidence**: \`${cell(finding.evidence)}\``);
       if (finding.grantedBy?.length) {

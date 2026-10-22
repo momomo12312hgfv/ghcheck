@@ -1,9 +1,15 @@
+import { agentAnalyzer } from "./agent";
 import { secretAnalyzer } from "./secret";
 import { tokenAnalyzer } from "./token";
 import { workflowAnalyzer } from "./workflow";
 import type { Analyzer, AnalyzerId } from "../core/types";
 
-export const ANALYZER_LIST: Analyzer[] = [tokenAnalyzer, workflowAnalyzer, secretAnalyzer];
+export const ANALYZER_LIST: Analyzer[] = [
+  tokenAnalyzer,
+  workflowAnalyzer,
+  secretAnalyzer,
+  agentAnalyzer,
+];
 
 export function getAnalyzers(ids?: readonly AnalyzerId[]): Analyzer[] {
   if (!ids || ids.length === 0) return ANALYZER_LIST;
