@@ -8084,7 +8084,7 @@ function capabilitiesToFindings(capabilities) {
 // package.json
 var package_default = {
   name: "ghcheck",
-  version: "0.1.0",
+  version: "0.1.1",
   description: "One scan, one report: token blast radius, workflow holes and leaked secrets in a single pass.",
   type: "module",
   bin: {
