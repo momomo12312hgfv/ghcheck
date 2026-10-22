@@ -1,0 +1,35 @@
+name: Self check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: self-check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  audit:
+    name: Audit this repository with the released action
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      # The released action, not the code in this pull request. A scanner that
+      # only ever runs its own build has never been tested by its users.
+      - uses: momomo12312hgfv/ghcheck@65f84850f10c5860efe1aceb64898a004ebb1420 # v0.3.0
+        with:
+          fail-on: high
+          format: sarif
+          output-file: ghcheck-report.sarif
+      - uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4
+        if: always()
+        with:
+          sarif_file: ghcheck-report.sarif

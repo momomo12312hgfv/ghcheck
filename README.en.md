@@ -211,7 +211,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: momomo12312hgfv/ghcheck@v0.2.0
+      - uses: momomo12312hgfv/ghcheck@v0.3.0
         with:
           fail-on: high
           format: sarif
