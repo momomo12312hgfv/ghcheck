@@ -186,7 +186,8 @@ One rule firing in twenty places counts once (highest severity wins), so twenty 
 
 ## Credits
 
-The rule sets are inspired by these projects (all MIT / Apache-2.0):
+The rule sets are inspired by these projects (all MIT / Apache-2.0). The full
+list is in [THIRD-PARTY.md](THIRD-PARTY.md).
 
 | Project | License | What was borrowed |
 |---|---|---|

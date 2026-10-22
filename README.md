@@ -186,7 +186,7 @@ Action 会写一份 Markdown 到 job summary，输出 `score` / `level` / `repor
 
 ## 上游与致谢
 
-ghcheck 的规则集参考了这些开源项目（均为 MIT / Apache-2.0）：
+ghcheck 的规则集参考了这些开源项目（均为 MIT / Apache-2.0），完整清单见 [THIRD-PARTY.md](THIRD-PARTY.md)：
 
 | 项目 | 许可 | 借鉴内容 |
 |---|---|---|
