@@ -73,6 +73,7 @@ jobs:
           bun-version: 1.4.2
       - run: bun install --frozen-lockfile
       - run: bun run build:mcp
+      - run: mkdir -p dist
       - run: npm pack --pack-destination ../dist
         working-directory: npm
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
