@@ -1,11 +1,13 @@
 node_modules/
 dist/
+!npm/dist/
 action-dist/
 .bun-cache/
 .parity/
 .env
 .env.*
 *.log
+*.tgz
 .DS_Store
 Thumbs.db
 coverage/

@@ -2,6 +2,7 @@
 import { Command } from "commander";
 import pkg from "../package.json";
 import { formatError, registerScan } from "./commands/scan";
+import { registerMcp } from "./commands/mcp";
 import { registerRules } from "./commands/rules";
 import { registerToken } from "./commands/token";
 
@@ -17,6 +18,7 @@ program
 registerScan(program);
 registerToken(program);
 registerRules(program);
+registerMcp(program);
 
 if (process.argv.length <= 2) {
   program.help();

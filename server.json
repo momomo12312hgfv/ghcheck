@@ -1,0 +1,24 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.momomo12312hgfv/ghcheck",
+  "title": "ghcheck",
+  "description": "Scan a repository for token blast radius, workflow holes, leaked secrets and agent configuration.",
+  "websiteUrl": "https://github.com/momomo12312hgfv/ghcheck#readme",
+  "repository": {
+    "url": "https://github.com/momomo12312hgfv/ghcheck",
+    "source": "github"
+  },
+  "version": "0.3.0",
+  "packages": [
+    {
+      "registryType": "npm",
+      "registryBaseUrl": "https://registry.npmjs.org",
+      "identifier": "@momomo12312hgfv/ghcheck-mcp",
+      "version": "0.3.0",
+      "runtimeHint": "npx",
+      "transport": {
+        "type": "stdio"
+      }
+    }
+  ]
+}

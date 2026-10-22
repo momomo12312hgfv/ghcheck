@@ -8,7 +8,7 @@
 `zizmor` covers workflows, `gitleaks` covers secrets, `patscope` covers tokens — three tools, three reports.
 **ghcheck merges them into one repository**: one scan, one report, one gate.
 
-[中文](README.md) · [Rule catalog](docs/rules.md)
+[中文](README.md) · [Rule catalog](docs/rules.md) · [Publishing runbook](docs/publishing.md)
 
 ---
 
@@ -101,6 +101,40 @@ It reports:
 - **prompt injection** in instruction files (`ignore all previous instructions`), `curl … | sh`, **sending data out**, **asking for credentials**
 
 **The boundary is explicit**: ghcheck never starts an MCP server and never calls a tool, so it never claims whether a server demands authentication. A tool that declares an execution capability is not a vulnerability; those findings are marked `likely`, and **confidence never changes the score**.
+
+### As an MCP server
+
+`ghcheck mcp` speaks the **Model Context Protocol** so an agent can call ghcheck directly. Four tools:
+
+| Tool | What it does |
+|---|---|
+| `scan_repository` | Scan a repository and return the score, the count per analyzer and every finding with its location and fix |
+| `list_rules` | List every rule, filtered by analyzer or severity |
+| `explain_rule` | Explain one rule: what it means, how severe it is and how to fix it |
+| `blast_radius` | What a GitHub token can reach: scopes, fine-grained permissions, write capabilities |
+
+```bash
+# Run it directly (stdio)
+ghcheck mcp
+
+# Add it to Claude Code
+claude mcp add ghcheck -- ghcheck mcp
+```
+
+```json
+{
+  "mcpServers": {
+    "ghcheck": {
+      "command": "npx",
+      "args": ["-y", "@momomo12312hgfv/ghcheck-mcp"]
+    }
+  }
+}
+```
+
+The npm package is a **single file with no dependencies** (the SDK is bundled), so `npx` is enough. The `server.json` in this repository is the manifest for the official MCP Registry.
+
+The MCP server reads local files and nothing else: no network, no writes, no telemetry.
 
 ### Token capability analysis
 
@@ -231,13 +265,14 @@ bun test
 bun run build         # binary for the current platform
 bun run build:all     # cross-compile six targets
 bun run build:action  # bundle the GitHub Action
+bun run build:mcp     # bundle the npm MCP server
 bun run docs          # regenerate docs/rules.md
 ```
 
 ## Roadmap
 
 - **v0.2** — ✅ the agent analyzer: `.mcp.json`, `AGENTS.md`, `CLAUDE.md` and `.vscode/mcp.json` in the same report
-- **v0.3** — ghcheck as an MCP server, callable by an agent; npm distribution; official registry listing
+- **v0.3** — ✅ ghcheck as an MCP server, callable by an agent; the npm package; the official registry manifest
 - **v0.4** — online audits that need a GitHub token (known-vulnerable actions), configurable rule sets
 
 ## License

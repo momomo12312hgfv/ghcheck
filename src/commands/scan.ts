@@ -48,7 +48,7 @@ function parseAnalyzers(raw: string[] | undefined): AnalyzerId[] | undefined {
 export function registerScan(program: Command): void {
   program
     .command("scan")
-    .description("Scan a repository for token blast radius, workflow holes and leaked secrets")
+    .description("Scan a repository for token blast radius, workflow holes, leaked secrets and agent configuration")
     .argument("[path]", "path to scan", ".")
     .option("--format <format>", "output format: terminal, markdown, json or sarif", "terminal")
     .option("--fail-on <severity>", "exit with code 2 when a finding is at or above this severity")

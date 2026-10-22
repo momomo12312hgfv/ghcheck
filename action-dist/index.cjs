@@ -8720,7 +8720,7 @@ function capabilitiesToFindings(capabilities) {
 // package.json
 var package_default = {
   name: "ghcheck",
-  version: "0.2.0",
+  version: "0.3.0",
   description: "One scan, one report: token blast radius, workflow holes, leaked secrets and agent configuration.",
   type: "module",
   bin: {
@@ -8738,6 +8738,7 @@ var package_default = {
     build: "bun run scripts/build.ts",
     "build:all": "bun run scripts/build-all.ts",
     "build:action": "bun run scripts/build-action.ts",
+    "build:mcp": "bun run scripts/build-mcp.ts",
     docs: "bun run scripts/generate-docs.ts",
     test: "bun test",
     typecheck: "tsc --noEmit",
@@ -8749,6 +8750,8 @@ var package_default = {
     "secret-scanning",
     "workflow-audit",
     "least-privilege",
+    "agent",
+    "mcp",
     "cli",
     "sarif"
   ],
@@ -8757,11 +8760,14 @@ var package_default = {
     bun: ">=1.2.0"
   },
   dependencies: {
+    "@modelcontextprotocol/server": "2.3.1",
     commander: "^15.0.0",
     picocolors: "^1.1.1",
-    yaml: "^2.8.1"
+    yaml: "^2.8.1",
+    zod: "^4.2.0"
   },
   devDependencies: {
+    "@modelcontextprotocol/client": "2.3.1",
     "@types/bun": "^1.4.3",
     typescript: "^7.0.2"
   }

@@ -37,6 +37,12 @@ jobs:
       - name: Check Action bundle is up to date
         if: runner.os == 'Linux'
         run: git diff --exit-code action-dist/index.cjs
+      - name: Build the npm package
+        if: runner.os == 'Linux'
+        run: bun run build:mcp
+      - name: Check the npm package and the registry manifest are up to date
+        if: runner.os == 'Linux'
+        run: git diff --exit-code npm/ server.json
       - name: Check rule catalog is up to date
         if: runner.os == 'Linux'
         run: bun run docs && git diff --exit-code docs/rules.md

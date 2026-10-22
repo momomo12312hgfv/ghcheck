@@ -8,7 +8,7 @@
 `zizmor` 管工作流，`gitleaks` 管密钥，`patscope` 管 Token —— 三份报告，三个工具。
 **ghcheck 把它们合进一个仓库**：一次扫描、一份报告、一个门禁。
 
-[English](README.en.md) · [规则清单](docs/rules.md)
+[English](README.en.md) · [规则清单](docs/rules.md) · [发布手册](docs/publishing.md)
 
 ---
 
@@ -101,6 +101,40 @@ ghcheck scan --agent-home
 - 指令文件里的 **prompt injection**（`忽略以上所有指令`）、`curl … | sh`、**外传数据**、**索要凭据**
 
 **边界写清楚**：ghcheck **不会**启动 MCP 服务器、**不会**调用任何工具，因此也**不会**判断某个服务器是否要求鉴权。工具描述里声明了执行能力 ≠ 存在漏洞；这类结论标记为 `likely`，且**不影响评分**。
+
+### 作为 MCP Server
+
+`ghcheck mcp` 用 **Model Context Protocol** 把 ghcheck 暴露给 Agent，四个工具：
+
+| 工具 | 做什么 |
+|---|---|
+| `scan_repository` | 扫一个仓库，返回评分、每个分析器的计数，以及每条 finding 的位置和修法 |
+| `list_rules` | 列出全部规则，可按分析器或严重度过滤 |
+| `explain_rule` | 解释一条规则：什么意思、多严重、怎么修 |
+| `blast_radius` | 一个 GitHub Token 能干什么：scope、细粒度权限、写权限清单 |
+
+```bash
+# 直接跑（stdio）
+ghcheck mcp
+
+# 装进 Claude Code
+claude mcp add ghcheck -- ghcheck mcp
+```
+
+```json
+{
+  "mcpServers": {
+    "ghcheck": {
+      "command": "npx",
+      "args": ["-y", "@momomo12312hgfv/ghcheck-mcp"]
+    }
+  }
+}
+```
+
+npm 包是**单文件、零依赖**（SDK 已打包进去），`npx` 即可用。仓库里的 `server.json` 是官方 MCP Registry 的清单。
+
+MCP Server 同样**只读本地文件**：不联网、不写文件、无遥测。
 
 ### Token 能力分析
 
@@ -230,13 +264,14 @@ bun test
 bun run build         # 当前平台二进制
 bun run build:all     # 6 个平台交叉编译
 bun run build:action  # 打包 GitHub Action
+bun run build:mcp     # 打包 npm 的 MCP Server
 bun run docs          # 重新生成 docs/rules.md
 ```
 
 ## 路线图
 
 - **v0.2** —— ✅ Agent 分析器：`.mcp.json`、`AGENTS.md`、`CLAUDE.md`、`.vscode/mcp.json` 进同一份报告
-- **v0.3** —— ghcheck 作为 MCP Server 被 Agent 直接调用；npm 分发；官方 Registry 上架
+- **v0.3** —— ✅ ghcheck 作为 MCP Server 被 Agent 直接调用；npm 包；官方 Registry 清单
 - **v0.4** —— 需要 GitHub Token 的在线审计（已知漏洞 action）、可配置规则集
 
 ## 许可

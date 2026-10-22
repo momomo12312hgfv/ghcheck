@@ -16,6 +16,13 @@ permission matrix and the capability table in `src/analyzers/token/` were
 written for patscope and are shared between the two projects under the same
 MIT license and the same copyright holder.
 
+The MCP server uses these libraries at runtime. Both are permissive:
+
+| Project | License | What ghcheck uses it for |
+|---|---|---|
+| [@modelcontextprotocol/server](https://github.com/modelcontextprotocol/typescript-sdk) | Apache-2.0 | The Model Context Protocol server implementation |
+| [zod](https://github.com/colinhacks/zod) | MIT | The tool input schemas the MCP server advertises |
+
 Projects that were deliberately **not** used, because their licenses are
 incompatible with distributing an MIT licensed tool:
 

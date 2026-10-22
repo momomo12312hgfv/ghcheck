@@ -1,0 +1,38 @@
+{
+  "name": "@momomo12312hgfv/ghcheck-mcp",
+  "version": "0.3.0",
+  "description": "MCP server for ghcheck: scan a repository for token blast radius, workflow holes, leaked secrets and agent configuration.",
+  "type": "module",
+  "bin": {
+    "ghcheck-mcp": "dist/ghcheck-mcp.js"
+  },
+  "mcpName": "io.github.momomo12312hgfv/ghcheck",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/momomo12312hgfv/ghcheck.git"
+  },
+  "homepage": "https://github.com/momomo12312hgfv/ghcheck#readme",
+  "bugs": {
+    "url": "https://github.com/momomo12312hgfv/ghcheck/issues"
+  },
+  "keywords": [
+    "mcp",
+    "modelcontextprotocol",
+    "github",
+    "security",
+    "workflow",
+    "agent"
+  ],
+  "license": "MIT",
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}
