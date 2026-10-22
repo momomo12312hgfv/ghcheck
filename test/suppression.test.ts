@@ -38,4 +38,19 @@ describe("suppression", () => {
     const suppression = collectSuppressions("run: echo hello");
     expect(isSuppressed(suppression, "workflow.script-injection", 1)).toBe(false);
   });
+
+  test("accepts the comment marker of every dialect", () => {
+    for (const marker of ["#", "//", "/*", "--"]) {
+      const suppression = collectSuppressions(`${marker} ghcheck: ignore workflow.script-injection`);
+      expect(isSuppressed(suppression, "workflow.script-injection", 1)).toBe(true);
+    }
+  });
+
+  test("accepts a suppression in a TypeScript line comment", () => {
+    const suppression = collectSuppressions(
+      'const token = "ghp_example"; // ghcheck: ignore secret.github-token',
+    );
+    expect(isSuppressed(suppression, "secret.github-token", 1)).toBe(true);
+    expect(isSuppressed(suppression, "secret.aws-access-key-id", 1)).toBe(false);
+  });
 });

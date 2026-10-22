@@ -2,11 +2,16 @@
  * One suppression syntax for all three analyzers.
  *
  *   # ghcheck: ignore rule-id, other-rule   -> suppress those rules on this line
- *   # ghcheck: ignore-all                   -> suppress every finding in this file
+ *   # ghcheck: ignore-all                   -> suppress every finding on this line
+ *   # ghcheck: ignore-file                  -> suppress every finding in this file
  *
  * zizmor uses `# zizmor: ignore`, actionlint uses `# actionlint-disable`,
  * secretlint uses `# secretlint-disable-line`. All three collapse into the
- * two forms above.
+ * forms above.
+ *
+ * The comment marker is accepted in every dialect the scanner meets: `#` for
+ * YAML and shell, `//` for TypeScript and Python, `/*` for C style, `--` for
+ * SQL and Haskell.
  */
 
 export interface Suppression {
@@ -18,9 +23,12 @@ export interface Suppression {
   fileAll: boolean;
 }
 
-const LINE_RULE_PATTERN = /#\s*ghcheck:\s*ignore\s+([A-Za-z0-9_.\-]+(?:\s*,\s*[A-Za-z0-9_.\-]+)*)/g;
-const LINE_ALL_PATTERN = /#\s*ghcheck:\s*ignore-all\b/g;
-const FILE_ALL_PATTERN = /#\s*ghcheck:\s*ignore-file\b/g;
+const MARKER = "(?:#|//|/\\*|--)";
+const RULE_IDS = "([A-Za-z0-9_.\\-]+(?:\\s*,\\s*[A-Za-z0-9_.\\-]+)*)";
+
+const LINE_RULE_PATTERN = new RegExp(`${MARKER}\\s*ghcheck:\\s*ignore\\s+${RULE_IDS}`, "g");
+const LINE_ALL_PATTERN = new RegExp(`${MARKER}\\s*ghcheck:\\s*ignore-all\\b`, "g");
+const FILE_ALL_PATTERN = new RegExp(`${MARKER}\\s*ghcheck:\\s*ignore-file\\b`, "g");
 
 export function collectSuppressions(content: string): Suppression {
   const lineRules = new Map<number, Set<string>>();

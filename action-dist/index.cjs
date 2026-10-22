@@ -8191,9 +8191,11 @@ function severityRankOf(severity) {
 }
 
 // src/core/suppression.ts
-var LINE_RULE_PATTERN = /#\s*ghcheck:\s*ignore\s+([A-Za-z0-9_.\-]+(?:\s*,\s*[A-Za-z0-9_.\-]+)*)/g;
-var LINE_ALL_PATTERN = /#\s*ghcheck:\s*ignore-all\b/g;
-var FILE_ALL_PATTERN = /#\s*ghcheck:\s*ignore-file\b/g;
+var MARKER = "(?:#|//|/\\*|--)";
+var RULE_IDS = "([A-Za-z0-9_.\\-]+(?:\\s*,\\s*[A-Za-z0-9_.\\-]+)*)";
+var LINE_RULE_PATTERN = new RegExp(`${MARKER}\\s*ghcheck:\\s*ignore\\s+${RULE_IDS}`, "g");
+var LINE_ALL_PATTERN = new RegExp(`${MARKER}\\s*ghcheck:\\s*ignore-all\\b`, "g");
+var FILE_ALL_PATTERN = new RegExp(`${MARKER}\\s*ghcheck:\\s*ignore-file\\b`, "g");
 function collectSuppressions(content) {
   const lineRules = new Map;
   const lineAll = new Set;

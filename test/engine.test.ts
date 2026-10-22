@@ -15,6 +15,14 @@ async function makeRepo(files: Record<string, string>): Promise<string> {
   return root;
 }
 
+/**
+ * A realistic-looking but fake AWS key. The suppression comment keeps
+ * ghcheck from flagging this repository's own test fixture; the value is
+ * put back together at runtime so the engine test still sees a raw secret.
+ */
+const AWS_KEY = ["AKIA", "3XQ7PLMN2Z9JK4TB"].join(""); // ghcheck: ignore secret.aws-access-key-id
+const GITHUB_TOKEN = ["ghp_", "16C7e42F292c6912E7710c838347Ae178B4a"].join(""); // ghcheck: ignore secret.github-token
+
 const VULNERABLE_WORKFLOW = [
   "on:",
   "  pull_request_target:",
@@ -30,7 +38,7 @@ describe("engine", () => {
   test("folds three analyzers into one report", async () => {
     const root = await makeRepo({
       ".github/workflows/ci.yml": VULNERABLE_WORKFLOW,
-      "config.ts": 'const key = "AKIA3XQ7PLMN2Z9JK4TB";',
+      "config.ts": `const key = "${AWS_KEY}";`,
     });
 
     const report = await runScan({ root });
@@ -70,7 +78,7 @@ describe("engine", () => {
 
   test("never leaks a raw credential into the report", async () => {
     const root = await makeRepo({
-      "config.ts": 'const token = "ghp_16C7e42F292c6912E7710c838347Ae178B4a";',
+      "config.ts": `const token = "${GITHUB_TOKEN}";`,
     });
 
     const report = await runScan({ root });
