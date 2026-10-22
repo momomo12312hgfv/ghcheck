@@ -110,6 +110,13 @@ One comment syntax works for all three analyzers:
 # ghcheck: ignore-file   <- skip the whole file
 ```
 
+### What is skipped
+
+- The scan **respects the `.gitignore` of the repository root**
+- `node_modules`, `dist`, binary files and files above 2 MB are skipped by default
+- `--exclude <fragment>` skips paths manually (repeatable)
+- `--ignore <rule id>` ignores a rule everywhere (repeatable)
+
 ### Output formats
 
 | Format | Use case |

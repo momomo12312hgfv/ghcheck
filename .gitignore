@@ -1,6 +1,8 @@
 node_modules/
 dist/
+action-dist/
 .bun-cache/
+.parity/
 .env
 .env.*
 *.log

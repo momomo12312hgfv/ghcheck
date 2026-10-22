@@ -32,6 +32,22 @@ export const UNTRUSTED_INPUTS: UntrustedInput[] = [
   { pattern: /github\.event\.inputs\./, label: "workflow input", severity: "medium" },
 ];
 
+/**
+ * Contexts whose value is produced by something else in the workflow.
+ *
+ * They are not attacker-controlled by themselves, but they are the shape
+ * that actually shows up in real workflows: a step output that was built
+ * from a pull request, a matrix value, a workflow input. If the producer
+ * handles attacker data, the interpolation is code execution.
+ */
+export const INDIRECT_INPUTS: UntrustedInput[] = [
+  { pattern: /steps\.[A-Za-z0-9_-]+\.outputs\./, label: "step output", severity: "medium" },
+  { pattern: /needs\.[A-Za-z0-9_-]+\.outputs\./, label: "job output", severity: "medium" },
+  { pattern: /matrix\./, label: "matrix value", severity: "medium" },
+  { pattern: /inputs\.[A-Za-z0-9_-]+/, label: "workflow input", severity: "medium" },
+  { pattern: /github\.event\.workflow_run\./, label: "triggering workflow payload", severity: "high" },
+];
+
 export interface DeprecatedAction {
   pattern: RegExp;
   severity: Severity;

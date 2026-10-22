@@ -8576,6 +8576,13 @@ var UNTRUSTED_INPUTS = [
   { pattern: /github\.head_ref/, label: "head branch name", severity: "critical" },
   { pattern: /github\.event\.inputs\./, label: "workflow input", severity: "medium" }
 ];
+var INDIRECT_INPUTS = [
+  { pattern: /steps\.[A-Za-z0-9_-]+\.outputs\./, label: "step output", severity: "medium" },
+  { pattern: /needs\.[A-Za-z0-9_-]+\.outputs\./, label: "job output", severity: "medium" },
+  { pattern: /matrix\./, label: "matrix value", severity: "medium" },
+  { pattern: /inputs\.[A-Za-z0-9_-]+/, label: "workflow input", severity: "medium" },
+  { pattern: /github\.event\.workflow_run\./, label: "triggering workflow payload", severity: "high" }
+];
 var DEPRECATED_ACTIONS = [
   {
     pattern: /^actions\/set-output@v[12]$/,
@@ -8651,6 +8658,13 @@ var RULES2 = [
     severity: "critical",
     description: "A `run:` step interpolates attacker-controlled text through `${{ }}`. Anyone who can open a pull request or an issue can run code in this job.",
     remediation: 'Pass the value through an environment variable and quote it: set `env: TITLE: ${{ github.event.pull_request.title }}` and use `"$TITLE"` in the script.'
+  },
+  {
+    id: "workflow.indirect-interpolation",
+    title: "A value produced elsewhere is interpolated into a shell command",
+    severity: "medium",
+    description: "A step output, a matrix value or a workflow input is inserted into a shell command. The value is not attacker-controlled by itself, but if the step that produced it handled attacker data, this is code execution.",
+    remediation: 'Pass the value through an environment variable and quote it, for example `env: VALUE: ${{ steps.build.outputs.value }}` and use `"$VALUE"` in the script.'
   },
   {
     id: "workflow.privileged-checkout",
@@ -8866,22 +8880,25 @@ function analyzeWorkflow(context) {
           while ((match = EXPRESSION_PATTERN.exec(slice)) !== null) {
             const expression = match[1] ?? "";
             const absolute = start + match.index;
-            const untrusted = UNTRUSTED_INPUTS.find((input) => input.pattern.test(expression));
-            if (untrusted) {
-              reported += 1;
-              if (reported > MAX_INJECTION_FINDINGS_PER_STEP)
-                break;
-              findings.push({
-                id: "workflow.script-injection",
-                analyzer: "workflow",
-                severity: untrusted.severity,
-                title: "Untrusted input is interpolated into a shell command",
-                description: `The ${untrusted.label} is attacker-controlled and is inserted into a shell command without quoting.`,
-                location: { file, line: lineOfOffset(content, absolute) },
-                evidence: "${{ " + expression.trim() + " }}",
-                remediation: 'Pass the value through an environment variable and quote it: set `env: TITLE: ${{ github.event.pull_request.title }}` and use `"$TITLE"` in the script.'
-              });
-            }
+            const direct = UNTRUSTED_INPUTS.find((input) => input.pattern.test(expression));
+            const indirect = direct ? undefined : INDIRECT_INPUTS.find((input) => input.pattern.test(expression));
+            const source = direct ?? indirect;
+            if (!source)
+              continue;
+            reported += 1;
+            if (reported > MAX_INJECTION_FINDINGS_PER_STEP)
+              break;
+            const isDirect = direct !== undefined;
+            findings.push({
+              id: isDirect ? "workflow.script-injection" : "workflow.indirect-interpolation",
+              analyzer: "workflow",
+              severity: source.severity,
+              title: isDirect ? "Untrusted input is interpolated into a shell command" : "A value produced elsewhere is interpolated into a shell command",
+              description: isDirect ? `The ${source.label} is attacker-controlled and is inserted into a shell command without quoting.` : `The ${source.label} is inserted into a shell command without quoting. It becomes code execution if the step that produced it handled attacker data.`,
+              location: { file, line: lineOfOffset(content, absolute) },
+              evidence: "${{ " + expression.trim() + " }}",
+              remediation: isDirect ? 'Pass the value through an environment variable and quote it: set `env: TITLE: ${{ github.event.pull_request.title }}` and use `"$TITLE"` in the script.' : 'Pass the value through an environment variable and quote it: set `env: VALUE: ${{ steps.build.outputs.value }}` and use `"$VALUE"` in the script.'
+            });
           }
         }
       }
@@ -9084,6 +9101,73 @@ function isSuppressed(suppression, ruleId, line) {
 // src/engine/walk.ts
 var import_promises = require("node:fs/promises");
 var import_node_path = require("node:path");
+
+// src/engine/gitignore.ts
+function escapeRegex(value) {
+  return value.replace(/[.+^${}()|[\]\\]/g, "\\$&");
+}
+function patternToRegex(pattern) {
+  const directoryOnly = pattern.endsWith("/");
+  let source = pattern.replace(/\/$/, "");
+  const anchored = source.startsWith("/") || source.includes("/");
+  source = source.replace(/^\//, "");
+  let regex = "";
+  for (let index = 0;index < source.length; index += 1) {
+    const char = source[index];
+    if (char === "*") {
+      if (source[index + 1] === "*") {
+        index += 1;
+        if (source[index + 1] === "/") {
+          index += 1;
+          regex += "(?:.*/)?";
+        } else {
+          regex += ".*";
+        }
+      } else {
+        regex += "[^/]*";
+      }
+      continue;
+    }
+    if (char === "?") {
+      regex += "[^/]";
+      continue;
+    }
+    regex += escapeRegex(char ?? "");
+  }
+  const prefix = anchored ? "^" : "(?:^|.*/)";
+  return {
+    regex: new RegExp(`${prefix}${regex}(?:/.*)?$`),
+    directoryOnly
+  };
+}
+function parseGitignore(content) {
+  const rules = [];
+  for (const raw of content.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line || line.startsWith("#"))
+      continue;
+    const negated = line.startsWith("!");
+    const pattern = negated ? line.slice(1).trim() : line;
+    if (!pattern)
+      continue;
+    const { regex, directoryOnly } = patternToRegex(pattern);
+    rules.push({ pattern: regex, negated, directoryOnly });
+  }
+  return rules;
+}
+function isIgnored(rules, relativePath) {
+  if (rules.length === 0)
+    return false;
+  let ignored = false;
+  for (const rule of rules) {
+    if (rule.pattern.test(relativePath)) {
+      ignored = !rule.negated;
+    }
+  }
+  return ignored;
+}
+
+// src/engine/walk.ts
 var EXCLUDED_DIRECTORIES = new Set([
   ".git",
   ".hg",
@@ -9179,6 +9263,14 @@ async function collectFiles(options) {
   if (!rootStat.isDirectory()) {
     throw new Error(`Scan path is not a directory: ${options.root}`);
   }
+  let gitignoreRules = [];
+  if (options.respectGitignore !== false) {
+    try {
+      gitignoreRules = parseGitignore(await import_promises.readFile(import_node_path.join(options.root, ".gitignore"), "utf8"));
+    } catch {
+      gitignoreRules = [];
+    }
+  }
   async function walk(directory) {
     const entries = await import_promises.readdir(directory, { withFileTypes: true });
     for (const entry of entries) {
@@ -9193,6 +9285,10 @@ async function collectFiles(options) {
           continue;
         if (isExcluded(relativePath, options.excludes))
           continue;
+        if (isIgnored(gitignoreRules, relativePath)) {
+          skipped += 1;
+          continue;
+        }
         await walk(absolute);
         continue;
       }
@@ -9204,6 +9300,10 @@ async function collectFiles(options) {
         continue;
       }
       if (isExcluded(relativePath, options.excludes)) {
+        skipped += 1;
+        continue;
+      }
+      if (isIgnored(gitignoreRules, relativePath)) {
         skipped += 1;
         continue;
       }

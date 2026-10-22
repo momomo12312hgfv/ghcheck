@@ -110,6 +110,13 @@ ghcheck scan ../my-repo --gh-account momomo12312hgfv
 # ghcheck: ignore-file   ← 整个文件都不检查
 ```
 
+### 跳过什么
+
+- 扫描**自动尊重仓库根目录的 `.gitignore`**
+- 内置跳过 `node_modules`、`dist`、二进制文件、超过 2 MB 的文件
+- `--exclude <片段>` 手动排除路径（可重复）
+- `--ignore <规则 id>` 全局忽略某条规则（可重复）
+
 ### 输出格式
 
 | 格式 | 用途 |

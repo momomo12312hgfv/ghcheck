@@ -1,5 +1,6 @@
 import { readdir, readFile, stat } from "node:fs/promises";
 import { join, relative, sep } from "node:path";
+import { isIgnored, parseGitignore, type GitignoreRule } from "./gitignore";
 
 const EXCLUDED_DIRECTORIES = new Set([
   ".git",
@@ -46,6 +47,8 @@ export interface WalkOptions {
   /** Case-insensitive substrings matched against the relative path. */
   excludes: string[];
   maxFileSize?: number;
+  /** Honour the .gitignore of the scan root. On by default. */
+  respectGitignore?: boolean;
 }
 
 export interface ScannedFile {
@@ -88,6 +91,15 @@ export async function collectFiles(options: WalkOptions): Promise<WalkResult> {
     throw new Error(`Scan path is not a directory: ${options.root}`);
   }
 
+  let gitignoreRules: GitignoreRule[] = [];
+  if (options.respectGitignore !== false) {
+    try {
+      gitignoreRules = parseGitignore(await readFile(join(options.root, ".gitignore"), "utf8"));
+    } catch {
+      gitignoreRules = [];
+    }
+  }
+
   async function walk(directory: string): Promise<void> {
     const entries = await readdir(directory, { withFileTypes: true });
 
@@ -103,6 +115,10 @@ export async function collectFiles(options: WalkOptions): Promise<WalkResult> {
       if (entry.isDirectory()) {
         if (EXCLUDED_DIRECTORIES.has(entry.name)) continue;
         if (isExcluded(relativePath, options.excludes)) continue;
+        if (isIgnored(gitignoreRules, relativePath)) {
+          skipped += 1;
+          continue;
+        }
         await walk(absolute);
         continue;
       }
@@ -119,6 +135,11 @@ export async function collectFiles(options: WalkOptions): Promise<WalkResult> {
       }
 
       if (isExcluded(relativePath, options.excludes)) {
+        skipped += 1;
+        continue;
+      }
+
+      if (isIgnored(gitignoreRules, relativePath)) {
         skipped += 1;
         continue;
       }

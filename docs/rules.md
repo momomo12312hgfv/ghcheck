@@ -480,6 +480,14 @@ The workflow could not be parsed, so none of the workflow checks could run again
 
 **Fix**: Fix the YAML syntax. `actionlint` reports the exact line.
 
+#### `workflow.indirect-interpolation`
+
+**A value produced elsewhere is interpolated into a shell command**
+
+A step output, a matrix value or a workflow input is inserted into a shell command. The value is not attacker-controlled by itself, but if the step that produced it handled attacker data, this is code execution.
+
+**Fix**: Pass the value through an environment variable and quote it, for example `env: VALUE: ${{ steps.build.outputs.value }}` and use `"$VALUE"` in the script.
+
 #### `workflow.unpinned-action`
 
 **Action is not pinned to a commit SHA**

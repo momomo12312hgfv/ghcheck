@@ -8,7 +8,7 @@ import {
   seqItems,
 } from "../../core/yaml";
 import type { Analyzer, AnalyzerContext, Finding, RuleDefinition } from "../../core/types";
-import { DANGEROUS_TRIGGERS, DEPRECATED_ACTIONS, UNTRUSTED_INPUTS } from "./rules";
+import { DANGEROUS_TRIGGERS, DEPRECATED_ACTIONS, INDIRECT_INPUTS, UNTRUSTED_INPUTS } from "./rules";
 
 const SHA_PATTERN = /^[0-9a-f]{40}$/i;
 const EXPRESSION_PATTERN = /\$\{\{([^}]*)\}\}/g;
@@ -30,6 +30,15 @@ const RULES: RuleDefinition[] = [
       "A `run:` step interpolates attacker-controlled text through `${{ }}`. Anyone who can open a pull request or an issue can run code in this job.",
     remediation:
       "Pass the value through an environment variable and quote it: set `env: TITLE: ${{ github.event.pull_request.title }}` and use `\"$TITLE\"` in the script.",
+  },
+  {
+    id: "workflow.indirect-interpolation",
+    title: "A value produced elsewhere is interpolated into a shell command",
+    severity: "medium",
+    description:
+      "A step output, a matrix value or a workflow input is inserted into a shell command. The value is not attacker-controlled by itself, but if the step that produced it handled attacker data, this is code execution.",
+    remediation:
+      "Pass the value through an environment variable and quote it, for example `env: VALUE: ${{ steps.build.outputs.value }}` and use `\"$VALUE\"` in the script.",
   },
   {
     id: "workflow.privileged-checkout",
@@ -282,22 +291,34 @@ export function analyzeWorkflow(context: AnalyzerContext): Finding[] {
           while ((match = EXPRESSION_PATTERN.exec(slice)) !== null) {
             const expression = match[1] ?? "";
             const absolute = start + match.index;
-            const untrusted = UNTRUSTED_INPUTS.find((input) => input.pattern.test(expression));
-            if (untrusted) {
-              reported += 1;
-              if (reported > MAX_INJECTION_FINDINGS_PER_STEP) break;
-              findings.push({
-                id: "workflow.script-injection",
-                analyzer: "workflow",
-                severity: untrusted.severity,
-                title: "Untrusted input is interpolated into a shell command",
-                description: `The ${untrusted.label} is attacker-controlled and is inserted into a shell command without quoting.`,
-                location: { file, line: lineOfOffset(content, absolute) },
-                evidence: "${{ " + expression.trim() + " }}",
-                remediation:
-                  "Pass the value through an environment variable and quote it: set `env: TITLE: ${{ github.event.pull_request.title }}` and use `\"$TITLE\"` in the script.",
-              });
-            }
+            const direct = UNTRUSTED_INPUTS.find((input) => input.pattern.test(expression));
+            const indirect = direct
+              ? undefined
+              : INDIRECT_INPUTS.find((input) => input.pattern.test(expression));
+
+            const source = direct ?? indirect;
+            if (!source) continue;
+
+            reported += 1;
+            if (reported > MAX_INJECTION_FINDINGS_PER_STEP) break;
+
+            const isDirect = direct !== undefined;
+            findings.push({
+              id: isDirect ? "workflow.script-injection" : "workflow.indirect-interpolation",
+              analyzer: "workflow",
+              severity: source.severity,
+              title: isDirect
+                ? "Untrusted input is interpolated into a shell command"
+                : "A value produced elsewhere is interpolated into a shell command",
+              description: isDirect
+                ? `The ${source.label} is attacker-controlled and is inserted into a shell command without quoting.`
+                : `The ${source.label} is inserted into a shell command without quoting. It becomes code execution if the step that produced it handled attacker data.`,
+              location: { file, line: lineOfOffset(content, absolute) },
+              evidence: "${{ " + expression.trim() + " }}",
+              remediation: isDirect
+                ? "Pass the value through an environment variable and quote it: set `env: TITLE: ${{ github.event.pull_request.title }}` and use `\"$TITLE\"` in the script."
+                : "Pass the value through an environment variable and quote it: set `env: VALUE: ${{ steps.build.outputs.value }}` and use `\"$VALUE\"` in the script.",
+            });
           }
         }
       }
